@@ -336,20 +336,37 @@ function update() {{
   player.h = curH;
   if (!player.sliding) {{
     if (thrusting) {{
-      player.vy -= 0.9;
-      if (player.vy < -8) player.vy = -8;
+      player.vy -= 1.35;
+      if (player.vy < -7.5) player.vy = -7.5;
     }} else {{
-      player.vy += 0.45;
-      if (player.vy > 11) player.vy = 11;
+      player.vy += 0.85;
+      if (player.vy > 9) player.vy = 9;
     }}
     player.y += player.vy;
     const topLimit = ceilingY + curH;
     if (player.y < topLimit) {{ player.y = topLimit; player.vy = 0; }}
     if (player.y >= groundY) {{ player.y = groundY; player.vy = 0; }}
+
+    // thrust trail particles (Geometry Dash ship style)
+    if (running) {{
+      particles.push({{
+        x: player.x - 2,
+        y: player.y - curH / 2 + (Math.random() * 10 - 5),
+        vx: -gameSpeed * 0.6 - Math.random() * 1.5,
+        vy: (Math.random() - 0.5) * 1.5,
+        life: 22,
+        maxLife: 22,
+        r: 2 + Math.random() * 2.5
+      }});
+    }}
   }} else {{
     player.y = groundY;
     player.vy = 0;
   }}
+  for (let p of particles) {{
+    p.x += p.vx; p.y += p.vy; p.life--;
+  }}
+  particles = particles.filter(p => p.life > 0);
 
   // spawn
   spawnTimer--;
@@ -454,23 +471,62 @@ function draw() {{
     }}
   }}
 
-  // player (glassy capsule)
-  const curH = player.sliding ? player.slideH : player.baseH;
-  const px = player.x, py = player.y - curH;
-  const pg = ctx.createLinearGradient(px, py, px, py + curH);
+  // thrust particle trail
+  for (let p of particles) {{
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.fillStyle = COLORS.secondary;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }}
+  ctx.globalAlpha = 1;
+
+  // player (Geometry Dash-style ship: tilts with velocity, glows when thrusting)
+  const curH2 = player.sliding ? player.slideH : player.baseH;
+  const cx = player.x + player.w / 2;
+  const cy = player.y - curH2 / 2;
+  const tilt = Math.max(-0.5, Math.min(0.5, -player.vy * 0.06));
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(tilt);
+
+  if (thrusting) {{
+    ctx.shadowColor = COLORS.secondary;
+    ctx.shadowBlur = 18;
+  }}
+
+  const pg = ctx.createLinearGradient(-player.w/2, -curH2/2, -player.w/2, curH2/2);
   pg.addColorStop(0, COLORS.primary);
   pg.addColorStop(1, COLORS.secondary);
   ctx.fillStyle = pg;
-  drawRoundedRect(px, py, player.w, curH, 10);
+  drawRoundedRect(-player.w/2, -curH2/2, player.w, curH2, 10);
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.6)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
+
+  ctx.shadowBlur = 0;
+
+  // small rear thruster flame when flying
+  if (thrusting) {{
+    ctx.fillStyle = COLORS.accent;
+    ctx.beginPath();
+    ctx.moveTo(-player.w/2, -6);
+    ctx.lineTo(-player.w/2 - 12 - Math.random() * 6, 0);
+    ctx.lineTo(-player.w/2, 6);
+    ctx.closePath();
+    ctx.fill();
+  }}
+
   // visor
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   ctx.beginPath();
-  ctx.arc(px + player.w/2, py + curH*0.32, 5, 0, Math.PI*2);
+  ctx.arc(2, -curH2 * 0.18, 5, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.restore();
 
   if (gameOver) {{
     ctx.fillStyle = 'rgba(5,5,20,0.5)';
