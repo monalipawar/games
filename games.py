@@ -1,137 +1,6 @@
-"""
-OrbitParkour — a cosmic endless-runner parkour game
-Part of Monali's App Universe
-
-Run with: streamlit run OrbitParkour.py
-"""
-
-import streamlit as st
-import streamlit.components.v1 as components
-import json
-import os
-from datetime import datetime
-
 # ---------------------------------------------------------------------------
-# Config & persistence
-# ---------------------------------------------------------------------------
-st.set_page_config(
-    page_title="OrbitParkour",
-    page_icon="🪐",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-SCORES_FILE = "orbitparkour_scores.json"
-
-
-def load_scores():
-    if os.path.exists(SCORES_FILE):
-        try:
-            with open(SCORES_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {"high_score": 0, "history": []}
-    return {"high_score": 0, "history": []}
-
-
-def save_scores(data):
-    with open(SCORES_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-if "scores" not in st.session_state:
-    st.session_state.scores = load_scores()
-
-# ---------------------------------------------------------------------------
-# THEMES — consistent with App Universe design system
-# ---------------------------------------------------------------------------
-THEMES = {
-    "Default": {"primary": "#7C4DFF", "secondary": "#00E5FF", "accent": "#FF4DA6", "bg1": "#0a0e27", "bg2": "#1a1445"},
-    "Cyberpunk": {"primary": "#FF2E92", "secondary": "#00FFF0", "accent": "#FFE600", "bg1": "#0d0221", "bg2": "#1f0140"},
-    "Sunset": {"primary": "#FF6B6B", "secondary": "#FFB347", "accent": "#FF3CAC", "bg1": "#1a0e2e", "bg2": "#3d1a4a"},
-    "Ocean": {"primary": "#00C9FF", "secondary": "#4FFBDF", "accent": "#0083FE", "bg1": "#031a2e", "bg2": "#0a3d5c"},
-    "Midnight": {"primary": "#5C6BC0", "secondary": "#9575CD", "accent": "#EC407A", "bg1": "#060818", "bg2": "#131a3a"},
-}
-
-if "opk_theme" not in st.session_state:
-    st.session_state.opk_theme = "Default"
-
-with st.sidebar:
-    st.markdown("### 🎨 Theme")
-    st.session_state.opk_theme = st.selectbox(
-        "Choose a theme", list(THEMES.keys()),
-        index=list(THEMES.keys()).index(st.session_state.opk_theme)
-    )
-    st.markdown("---")
-    st.markdown(f"### 🏆 High Score\n# {st.session_state.scores['high_score']}")
-    if st.session_state.scores["history"]:
-        st.markdown("### 📜 Recent Runs")
-        for run in reversed(st.session_state.scores["history"][-8:]):
-            st.caption(f"{run['score']} pts — {run['date']}")
-    if st.button("🗑️ Reset Scores"):
-        st.session_state.scores = {"high_score": 0, "history": []}
-        save_scores(st.session_state.scores)
-        st.rerun()
-
-t = THEMES[st.session_state.opk_theme]
-
-# ---------------------------------------------------------------------------
-# Global cosmic glassmorphism CSS
-# ---------------------------------------------------------------------------
-st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
-
-html, body, [class*="css"] {{
-    font-family: 'Outfit', sans-serif;
-}}
-
-.stApp {{
-    background: radial-gradient(ellipse at top, {t['bg2']} 0%, {t['bg1']} 60%, #000000 100%);
-}}
-
-.opk-title {{
-    text-align: center;
-    font-size: 3rem;
-    font-weight: 800;
-    background: linear-gradient(90deg, {t['primary']}, {t['secondary']}, {t['accent']});
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 0;
-    letter-spacing: 2px;
-}}
-
-.opk-subtitle {{
-    text-align: center;
-    color: rgba(255,255,255,0.6);
-    font-weight: 300;
-    margin-top: 0;
-    margin-bottom: 1.2rem;
-}}
-
-.opk-glass {{
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 20px;
-    padding: 10px;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-}}
-
-section[data-testid="stSidebar"] {{
-    background: rgba(10,14,39,0.85);
-    backdrop-filter: blur(10px);
-    border-right: 1px solid rgba(255,255,255,0.08);
-}}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown('<p class="opk-title">🪐 ORBITPARKOUR</p>', unsafe_allow_html=True)
-st.markdown('<p class="opk-subtitle">Dash across the asteroid belt — jump, slide, survive.</p>', unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
-# Game canvas (HTML5 canvas embedded via components — required for real-time
-# input & animation loop, which Streamlit's rerun model can't drive smoothly)
+# Game canvas (Three.js WebGL scene embedded via components — required for
+# real-time 3D rendering & input, which Streamlit's rerun model can't drive)
 # ---------------------------------------------------------------------------
 game_html = f"""
 <!DOCTYPE html>
@@ -149,14 +18,16 @@ game_html = f"""
     max-width: 900px;
     margin: 0 auto;
   }}
-  canvas {{
-    display: block;
+  #gameCanvasHolder {{
     width: 100%;
-    background: linear-gradient(180deg, {t['bg2']} 0%, {t['bg1']} 100%);
+    aspect-ratio: 900 / 420;
     border-radius: 18px;
+    overflow: hidden;
     border: 1px solid rgba(255,255,255,0.15);
     box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 0 60px rgba(124,77,255,0.08);
+    background: linear-gradient(180deg, {t['bg2']} 0%, {t['bg1']} 100%);
   }}
+  #gameCanvasHolder canvas {{ display: block; width: 100% !important; height: 100% !important; }}
   #hud {{
     position: absolute;
     top: 14px; left: 20px; right: 20px;
@@ -204,15 +75,21 @@ game_html = f"""
   }}
   #startBtn:hover {{ filter: brightness(1.15); }}
   .hint {{ font-size: 13px; opacity: 0.55; margin-top: 10px; }}
+  #loadingMsg {{
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.6); font-size: 14px;
+  }}
 </style>
 </head>
 <body>
 <div id="wrap">
+  <div id="gameCanvasHolder">
+    <div id="loadingMsg">Loading 3D engine…</div>
+  </div>
   <div id="hud">
     <span id="scoreLabel">Score: 0</span>
     <span id="bestLabel">Best: {st.session_state.scores['high_score']}</span>
   </div>
-  <canvas id="game" width="900" height="420"></canvas>
   <div id="overlay">
     <h1>🪐 ORBITPARKOUR</h1>
     <p>Jump asteroids. Slide under debris. Dodge flyers. Don't crash.</p>
@@ -221,44 +98,185 @@ game_html = f"""
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+(function() {{
+
+const COLORS = {{
+  primary: "{t['primary']}",
+  secondary: "{t['secondary']}",
+  accent: "{t['accent']}",
+  bg1: "{t['bg1']}",
+  bg2: "{t['bg2']}"
+}};
+
+function hexToInt(h) {{ return parseInt(h.replace('#',''), 16); }}
+
+const holder = document.getElementById('gameCanvasHolder');
 const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('startBtn');
 const scoreLabel = document.getElementById('scoreLabel');
 const bestLabel = document.getElementById('bestLabel');
 
-const COLORS = {{
-  primary: "{t['primary']}",
-  secondary: "{t['secondary']}",
-  accent: "{t['accent']}"
-}};
+const BASE_W = 900, BASE_H = 420;
 
-let W = canvas.width, H = canvas.height;
-const groundY = H - 70;
+// ---------- scene setup ----------
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(hexToInt(COLORS.bg1), 20, 95);
 
-let stars = [];
-for (let i = 0; i < 90; i++) {{
-  stars.push({{
-    x: Math.random() * W,
-    y: Math.random() * (H - 90),
-    r: Math.random() * 1.6 + 0.3,
-    s: Math.random() * 0.6 + 0.15
+const camera = new THREE.PerspectiveCamera(58, BASE_W / BASE_H, 0.1, 200);
+camera.position.set(0, 5.4, 11.5);
+camera.lookAt(0, 3, -10);
+
+const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
+renderer.setSize(BASE_W, BASE_H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.getElementById('loadingMsg').remove();
+holder.appendChild(renderer.domElement);
+
+// lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+dirLight.position.set(-6, 12, 6);
+scene.add(dirLight);
+const rimLight = new THREE.PointLight(hexToInt(COLORS.secondary), 1.2, 30);
+rimLight.position.set(0, 4, 6);
+scene.add(rimLight);
+
+// starfield
+const starGeo = new THREE.BufferGeometry();
+const starCount = 500;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {{
+  starPos[i*3] = (Math.random() - 0.5) * 120;
+  starPos[i*3+1] = Math.random() * 60 - 5;
+  starPos[i*3+2] = -Math.random() * 150 + 10;
+}}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({{ color: 0xffffff, size: 0.35, transparent: true, opacity: 0.8 }});
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// ground: scrolling grid strip segments
+const groundY = 0;
+const ceilingY = 9;
+const groundSegs = [];
+const segLen = 20;
+const segCount = 6;
+for (let i = 0; i < segCount; i++) {{
+  const g = new THREE.Group();
+  const planeGeo = new THREE.PlaneGeometry(16, segLen);
+  const planeMat = new THREE.MeshStandardMaterial({{
+    color: hexToInt(COLORS.bg2), roughness: 0.8, metalness: 0.2,
+    emissive: hexToInt(COLORS.primary), emissiveIntensity: 0.06
   }});
+  const plane = new THREE.Mesh(planeGeo, planeMat);
+  plane.rotation.x = -Math.PI / 2;
+  g.add(plane);
+  const gridHelper = new THREE.GridHelper(16, 8, hexToInt(COLORS.secondary), hexToInt(COLORS.primary));
+  gridHelper.material.transparent = true;
+  gridHelper.material.opacity = 0.35;
+  g.add(gridHelper);
+  g.position.set(0, groundY, -i * segLen);
+  scene.add(g);
+  groundSegs.push(g);
 }}
 
-let player, obstacles, particles, gameSpeed, score, running, gameOver, spawnTimer, elapsed;
-let thrusting = false;
-const ceilingY = 40;
+// ---------- ship ----------
+const shipGroup = new THREE.Group();
+
+const bodyMat = new THREE.MeshStandardMaterial({{
+  color: hexToInt(COLORS.secondary), roughness: 0.35, metalness: 0.6,
+  emissive: hexToInt(COLORS.primary), emissiveIntensity: 0.25
+}});
+const bodyGeo = new THREE.ConeGeometry(0.55, 2.3, 8);
+const body = new THREE.Mesh(bodyGeo, bodyMat);
+body.rotation.x = Math.PI / 2;
+shipGroup.add(body);
+
+const wingMat = new THREE.MeshStandardMaterial({{
+  color: hexToInt(COLORS.accent), roughness: 0.4, metalness: 0.5
+}});
+const wingGeo = new THREE.BoxGeometry(1.9, 0.08, 0.7);
+const wingL = new THREE.Mesh(wingGeo, wingMat);
+wingL.position.set(-0.9, 0, 0.2);
+wingL.rotation.z = 0.12;
+shipGroup.add(wingL);
+const wingR = wingL.clone();
+wingR.position.x = 0.9;
+wingR.rotation.z = -0.12;
+shipGroup.add(wingR);
+
+const canopyMat = new THREE.MeshStandardMaterial({{
+  color: 0xffffff, roughness: 0.05, metalness: 0.1,
+  emissive: hexToInt(COLORS.secondary), emissiveIntensity: 0.3,
+  transparent: true, opacity: 0.85
+}});
+const canopyGeo = new THREE.SphereGeometry(0.28, 12, 12);
+const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+canopy.position.set(0, 0.15, 0.5);
+shipGroup.add(canopy);
+
+const engineGlow = new THREE.PointLight(hexToInt(COLORS.accent), 0, 6);
+engineGlow.position.set(0, 0, -1.3);
+shipGroup.add(engineGlow);
+
+const flameGeo = new THREE.ConeGeometry(0.22, 0.9, 8);
+const flameMat = new THREE.MeshBasicMaterial({{ color: hexToInt(COLORS.accent), transparent: true, opacity: 0.9 }});
+const flame = new THREE.Mesh(flameGeo, flameMat);
+flame.rotation.x = -Math.PI / 2;
+flame.position.set(0, 0, -1.5);
+flame.visible = false;
+shipGroup.add(flame);
+
+scene.add(shipGroup);
+
+// ground contact shadow
+const shadowGeo = new THREE.CircleGeometry(0.9, 20);
+const shadowMat = new THREE.MeshBasicMaterial({{ color: 0x000000, transparent: true, opacity: 0.35 }});
+const groundShadow = new THREE.Mesh(shadowGeo, shadowMat);
+groundShadow.rotation.x = -Math.PI / 2;
+groundShadow.position.y = groundY + 0.02;
+scene.add(groundShadow);
+
+// thrust particles (small glowing sprites reused as a pool)
+const trailMat = new THREE.SpriteMaterial({{ color: hexToInt(COLORS.secondary), transparent: true, opacity: 0.8 }});
+let particles = [];
+
+// obstacle pool helpers
+function makeRock(size) {{
+  const geo = new THREE.IcosahedronGeometry(size, 0);
+  const mat = new THREE.MeshStandardMaterial({{
+    color: hexToInt(COLORS.accent), roughness: 0.6, metalness: 0.3,
+    emissive: hexToInt(COLORS.accent), emissiveIntensity: 0.15, flatShading: true
+  }});
+  return new THREE.Mesh(geo, mat);
+}}
+function makeDebris(w, h, d) {{
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mat = new THREE.MeshStandardMaterial({{
+    color: hexToInt(COLORS.secondary), roughness: 0.5, metalness: 0.4,
+    emissive: hexToInt(COLORS.secondary), emissiveIntensity: 0.2
+  }});
+  return new THREE.Mesh(geo, mat);
+}}
+function makeFlyer(size) {{
+  const geo = new THREE.OctahedronGeometry(size, 0);
+  const mat = new THREE.MeshStandardMaterial({{
+    color: hexToInt(COLORS.primary), roughness: 0.5, metalness: 0.5,
+    emissive: hexToInt(COLORS.primary), emissiveIntensity: 0.25, flatShading: true
+  }});
+  return new THREE.Mesh(geo, mat);
+}}
+
+// ---------- game state ----------
+let player, obstacles, gameSpeed, score, running, gameOver, spawnTimer, elapsed, thrusting;
 
 function resetGame() {{
-  player = {{
-    x: 120, y: groundY, w: 34, h: 44,
-    vy: 0, sliding: false,
-    baseH: 44, slideH: 24, tilt: 0
-  }};
+  player = {{ y: groundY, vy: 0, sliding: false, tilt: 0 }};
+  for (const o of obstacles || []) scene.remove(o.mesh);
   obstacles = [];
+  for (const p of particles) scene.remove(p.sprite);
   particles = [];
   gameSpeed = 3.6;
   score = 0;
@@ -267,21 +285,16 @@ function resetGame() {{
   running = false;
   gameOver = false;
   thrusting = false;
+  shipGroup.position.set(0, groundY + 1.2, 0);
+  shipGroup.rotation.set(0, Math.PI, 0);
+  shipGroup.scale.set(1, 1, 1);
 }}
 resetGame();
 
-function flyStart() {{
-  if (running && !player.sliding) thrusting = true;
-}}
+function flyStart() {{ if (running && !player.sliding) thrusting = true; }}
 function flyEnd() {{ thrusting = false; }}
-function jumpImpulse() {{
-  if (running && !player.sliding) {{
-    player.vy = -9.5;
-  }}
-}}
-function slideStart() {{
-  if (running && player.y >= groundY - 1) player.sliding = true;
-}}
+function jumpImpulse() {{ if (running && !player.sliding) player.vy = -(-9.5) * -1 * 0 + 4.4; }}
+function slideStart() {{ if (running && player.y <= groundY + 1.2 + 0.05) player.sliding = true; }}
 function slideEnd() {{ player.sliding = false; }}
 
 document.addEventListener('keydown', (e) => {{
@@ -293,42 +306,53 @@ document.addEventListener('keyup', (e) => {{
   if (e.code === 'ArrowUp') flyEnd();
   if (e.code === 'ArrowDown') slideEnd();
 }});
-
-canvas.addEventListener('touchstart', (e) => {{
-  const rect = canvas.getBoundingClientRect();
+holder.addEventListener('touchstart', (e) => {{
+  const rect = holder.getBoundingClientRect();
   const touchY = e.touches[0].clientY - rect.top;
   if (touchY < rect.height / 2) flyStart(); else slideStart();
 }});
-canvas.addEventListener('touchend', () => {{ flyEnd(); slideEnd(); }});
-canvas.addEventListener('mousedown', (e) => {{
-  const rect = canvas.getBoundingClientRect();
+holder.addEventListener('touchend', () => {{ flyEnd(); slideEnd(); }});
+holder.addEventListener('mousedown', (e) => {{
+  const rect = holder.getBoundingClientRect();
   const clickY = e.clientY - rect.top;
   if (clickY < rect.height / 2) flyStart(); else slideStart();
 }});
-canvas.addEventListener('mouseup', () => {{ flyEnd(); slideEnd(); }});
+holder.addEventListener('mouseup', () => {{ flyEnd(); slideEnd(); }});
 
 function spawnObstacle() {{
-  const type = Math.random();
-  if (type < 0.4) {{
-    // ground asteroid (jump/fly over)
-    const size = 30 + Math.random() * 26;
-    obstacles.push({{ x: W + 20, y: groundY - size, w: size, h: size, type: 'rock' }});
-  }} else if (type < 0.65) {{
-    // floating debris (slide under, or stay low)
-    const h = 26;
-    obstacles.push({{ x: W + 20, y: groundY - player.baseH - 6, w: 46, h: h, type: 'debris' }});
+  const r = Math.random();
+  const spawnZ = -70;
+  let mesh, type, radius;
+  if (r < 0.4) {{
+    const size = 0.7 + Math.random() * 0.55;
+    mesh = makeRock(size);
+    mesh.position.set(0, groundY + size * 0.85, spawnZ);
+    type = 'rock'; radius = size;
+  }} else if (r < 0.65) {{
+    mesh = makeDebris(2.1, 0.6, 0.6);
+    mesh.position.set(0, groundY + 2.6, spawnZ);
+    type = 'debris'; radius = 0.5;
   }} else {{
-    // airborne flyer — sits at a random altitude, must dodge above/below it
-    const size = 34 + Math.random() * 20;
-    const minY = ceilingY + 10;
-    const maxY = groundY - player.baseH - size - 10;
-    const y = minY + Math.random() * Math.max(10, maxY - minY);
-    obstacles.push({{ x: W + 20, y: y, w: size, h: size, type: 'flyer' }});
+    const size = 0.75 + Math.random() * 0.45;
+    const minY = ceilingY - 1.5;
+    const maxY = groundY + 1.6;
+    const y = maxY + Math.random() * (minY - maxY);
+    mesh = makeFlyer(size);
+    mesh.position.set(0, y, spawnZ);
+    type = 'flyer'; radius = size;
   }}
+  scene.add(mesh);
+  obstacles.push({{ mesh, type, radius, z: spawnZ }});
 }}
 
-function rectsOverlap(a, b) {{
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+function spawnParticle() {{
+  const sprite = new THREE.Sprite(trailMat.clone());
+  sprite.scale.set(0.35, 0.35, 0.35);
+  sprite.position.copy(shipGroup.position);
+  sprite.position.z += 1.3;
+  sprite.position.y += (Math.random() - 0.5) * 0.3;
+  scene.add(sprite);
+  particles.push({{ sprite, life: 24, maxLife: 24 }});
 }}
 
 function update(dt) {{
@@ -336,10 +360,11 @@ function update(dt) {{
   elapsed++;
   gameSpeed = Math.min(7.5, 3.6 + elapsed * 0.0008);
   score += Math.floor(gameSpeed / 3);
+  scoreLabel.textContent = 'Score: ' + score;
 
-  // player physics
-  const curH = player.sliding ? player.slideH : player.baseH;
-  player.h = curH;
+  const shipBaseY = groundY + 1.2;
+  const shipTopY = ceilingY - 0.8;
+
   if (!player.sliding) {{
     if (thrusting) {{
       player.vy -= 0.85 * dt;
@@ -348,34 +373,48 @@ function update(dt) {{
       player.vy += 0.85 * dt;
       if (player.vy > 9) player.vy = 9;
     }}
-    player.y += player.vy * dt;
-    const topLimit = ceilingY + curH;
-    if (player.y < topLimit) {{ player.y = topLimit; player.vy = 0; }}
-    if (player.y >= groundY) {{ player.y = groundY; player.vy = 0; }}
+    player.y += player.vy * dt * 0.09;
+    if (player.y < shipBaseY) {{ player.y = shipBaseY; player.vy = 0; }}
+    if (player.y > shipTopY) {{ player.y = shipTopY; player.vy = 0; }}
 
-    // thrust trail particles (Geometry Dash ship style)
-    if (running) {{
-      particles.push({{
-        x: player.x - 2,
-        y: player.y - curH / 2 + (Math.random() * 10 - 5),
-        vx: -gameSpeed * 0.6 - Math.random() * 1.5,
-        vy: (Math.random() - 0.5) * 1.5,
-        life: 22,
-        maxLife: 22,
-        r: 2 + Math.random() * 2.5
-      }});
-    }}
+    if (running) spawnParticle();
   }} else {{
-    player.y = groundY;
+    player.y = shipBaseY;
     player.vy = 0;
   }}
-  for (let p of particles) {{
-    p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
-  }}
-  particles = particles.filter(p => p.life > 0);
 
-  const targetTilt = Math.max(-0.5, Math.min(0.5, -player.vy * 0.06));
+  shipGroup.position.y = player.y;
+  const altRatio = Math.max(0, Math.min(1, (player.y - shipBaseY) / (shipTopY - shipBaseY)));
+  const targetTilt = Math.max(-0.4, Math.min(0.4, -player.vy * 0.05));
   player.tilt += (targetTilt - player.tilt) * Math.min(1, 0.25 * dt);
+  shipGroup.rotation.x = -player.tilt;
+  const scaleY = player.sliding ? 0.55 : 1;
+  shipGroup.scale.y += (scaleY - shipGroup.scale.y) * Math.min(1, 0.4 * dt);
+
+  engineGlow.intensity = thrusting ? 1.4 : 0;
+  flame.visible = thrusting;
+  if (thrusting) {{
+    const flick = 0.85 + Math.random() * 0.3;
+    flame.scale.set(flick, flick * (0.8 + Math.random() * 0.4), flick);
+  }}
+
+  groundShadow.position.x = shipGroup.position.x;
+  groundShadow.position.z = shipGroup.position.z;
+  const shadowScale = 1 - altRatio * 0.5;
+  groundShadow.scale.set(shadowScale, shadowScale, shadowScale);
+  groundShadow.material.opacity = 0.35 * (1 - altRatio * 0.7);
+
+  // particles drift and fade
+  for (const p of particles) {{
+    p.sprite.position.z += gameSpeed * dt * 0.12;
+    p.life -= dt;
+    p.sprite.material.opacity = 0.8 * (p.life / p.maxLife);
+    const sc = 0.35 * (p.life / p.maxLife);
+    p.sprite.scale.set(sc, sc, sc);
+  }}
+  for (let i = particles.length - 1; i >= 0; i--) {{
+    if (particles[i].life <= 0) {{ scene.remove(particles[i].sprite); particles.splice(i, 1); }}
+  }}
 
   // spawn
   spawnTimer -= dt;
@@ -384,254 +423,55 @@ function update(dt) {{
     spawnTimer = Math.max(38, 65 - elapsed * 0.01) + Math.random() * 22;
   }}
 
-  // move obstacles
-  for (let o of obstacles) o.x -= gameSpeed * dt;
-  obstacles = obstacles.filter(o => o.x + o.w > -20);
+  // move obstacles toward camera, check collision
+  const shipZ = shipGroup.position.z;
+  for (const o of obstacles) {{
+    o.z += gameSpeed * dt * 0.12;
+    o.mesh.position.z = o.z;
+    o.mesh.rotation.x += 0.01 * dt;
+    o.mesh.rotation.y += 0.015 * dt;
 
-  // collision
-  const playerBox = {{
-    x: player.x + 6, y: player.y - curH + 6,
-    w: player.w - 12, h: curH - 10
-  }};
-  for (let o of obstacles) {{
-    if (rectsOverlap(playerBox, o)) {{
+    const dz = Math.abs(o.z - shipZ);
+    const dy = Math.abs(o.mesh.position.y - shipGroup.position.y);
+    if (dz < 1.0 && dy < (o.radius + 0.65)) {{
       endGame();
-      break;
     }}
   }}
+  obstacles = obstacles.filter(o => {{
+    if (o.z > 6) {{ scene.remove(o.mesh); return false; }}
+    return true;
+  }});
 
-  // stars parallax
-  for (let s of stars) {{
-    s.x -= s.s * (gameSpeed / 3) * dt;
-    if (s.x < 0) {{ s.x = W; s.y = Math.random() * (H - 90); }}
+  // scroll ground segments
+  for (const seg of groundSegs) {{
+    seg.position.z += gameSpeed * dt * 0.12;
+    if (seg.position.z > segLen) seg.position.z -= segLen * segCount;
   }}
 
-  scoreLabel.textContent = 'Score: ' + score;
-}}
-
-function drawRoundedRect(x, y, w, h, r) {{
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}}
-
-function draw() {{
-  ctx.clearRect(0, 0, W, H);
-
-  // stars
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  for (let s of stars) {{
-    ctx.globalAlpha = 0.4 + s.s;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-    ctx.fill();
-  }}
-  ctx.globalAlpha = 1;
-
-  // ground
-  const grad = ctx.createLinearGradient(0, groundY, 0, H);
-  grad.addColorStop(0, COLORS.primary + '55');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, groundY, W, H - groundY);
-  ctx.strokeStyle = COLORS.secondary + 'aa';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, groundY);
-  ctx.lineTo(W, groundY);
-  ctx.stroke();
-
-  // obstacles
-  for (let o of obstacles) {{
-    if (o.type === 'rock') {{
-      ctx.fillStyle = COLORS.accent;
-      ctx.beginPath();
-      ctx.arc(o.x + o.w/2, o.y + o.h/2, o.w/2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.stroke();
-    }} else if (o.type === 'debris') {{
-      ctx.fillStyle = COLORS.secondary;
-      drawRoundedRect(o.x, o.y, o.w, o.h, 8);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-      ctx.stroke();
-    }} else {{
-      // flyer — spiky airborne asteroid
-      ctx.save();
-      ctx.translate(o.x + o.w/2, o.y + o.h/2);
-      ctx.fillStyle = COLORS.primary;
-      ctx.beginPath();
-      const spikes = 8, rOuter = o.w/2, rInner = o.w/3.2;
-      for (let i = 0; i < spikes * 2; i++) {{
-        const r = i % 2 === 0 ? rOuter : rInner;
-        const a = (Math.PI / spikes) * i;
-        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-      }}
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx.stroke();
-      ctx.restore();
-    }}
-  }}
-
-  // thrust particle trail
-  for (let p of particles) {{
-    const alpha = p.life / p.maxLife;
-    ctx.globalAlpha = alpha * 0.8;
-    ctx.fillStyle = COLORS.secondary;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
-    ctx.fill();
-  }}
-  ctx.globalAlpha = 1;
-
-  // player (Geometry Dash-style ship: tilts with velocity, glows when thrusting)
-  const curH2 = player.sliding ? player.slideH : player.baseH;
-  const cx = player.x + player.w / 2;
-  const cy = player.y - curH2 / 2;
-  const tilt = player.tilt;
-
-  const w = player.w, h = curH2;
-  const noseX = w * 0.62;
-  const tailX = -w * 0.55;
-
-  // ground contact shadow (depth cue: shrinks/fades as ship gains altitude)
-  const altRatio = Math.max(0, Math.min(1, (groundY - player.y) / (groundY - ceilingY)));
-  ctx.save();
-  ctx.globalAlpha = 0.35 * (1 - altRatio * 0.7);
-  ctx.fillStyle = '#000000';
-  ctx.beginPath();
-  ctx.ellipse(cx, groundY + 6, w * 0.42 * (1 - altRatio * 0.3), 6 * (1 - altRatio * 0.4), 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(tilt);
-
-  if (thrusting) {{
-    ctx.shadowColor = COLORS.secondary;
-    ctx.shadowBlur = 18;
-  }}
-
-  // main fuselage (pointed nose, tapered tail) — diagonal light-to-dark gradient for a 3D rounded feel
-  const pg = ctx.createLinearGradient(-w * 0.2, -h * 0.5, w * 0.2, h * 0.5);
-  pg.addColorStop(0, '#ffffff');
-  pg.addColorStop(0.28, COLORS.secondary);
-  pg.addColorStop(0.65, COLORS.primary);
-  pg.addColorStop(1, '#0a0a1a');
-  ctx.fillStyle = pg;
-  ctx.beginPath();
-  ctx.moveTo(noseX, 0);
-  ctx.quadraticCurveTo(w * 0.15, -h * 0.42, tailX, -h * 0.3);
-  ctx.lineTo(tailX, h * 0.3);
-  ctx.quadraticCurveTo(w * 0.15, h * 0.42, noseX, 0);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // top specular highlight strip (fakes a curved/rounded hull catching light)
-  ctx.save();
-  ctx.clip();
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.beginPath();
-  ctx.ellipse(w * 0.05, -h * 0.2, w * 0.32, h * 0.1, -0.15, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // underside shade (grounds the shape, reads as the shadowed bottom half)
-  ctx.save();
-  ctx.clip();
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.beginPath();
-  ctx.ellipse(0, h * 0.28, w * 0.5, h * 0.22, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // swept wings (gradient shaded for depth)
-  const wingGradTop = ctx.createLinearGradient(-w * 0.5, -h * 0.85, -w * 0.05, -h * 0.12);
-  wingGradTop.addColorStop(0, '#2a1a4a');
-  wingGradTop.addColorStop(1, COLORS.accent);
-  ctx.fillStyle = wingGradTop;
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.05, -h * 0.18);
-  ctx.lineTo(-w * 0.35, -h * 0.85);
-  ctx.lineTo(-w * 0.5, -h * 0.85);
-  ctx.lineTo(-w * 0.2, -h * 0.12);
-  ctx.closePath();
-  ctx.fill();
-  const wingGradBottom = ctx.createLinearGradient(-w * 0.5, h * 0.85, -w * 0.05, h * 0.12);
-  wingGradBottom.addColorStop(0, '#2a1a4a');
-  wingGradBottom.addColorStop(1, COLORS.accent);
-  ctx.fillStyle = wingGradBottom;
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.05, h * 0.18);
-  ctx.lineTo(-w * 0.35, h * 0.85);
-  ctx.lineTo(-w * 0.5, h * 0.85);
-  ctx.lineTo(-w * 0.2, h * 0.12);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.shadowBlur = 0;
-
-  // rear thruster flame when flying
-  if (thrusting) {{
-    ctx.fillStyle = COLORS.accent;
-    ctx.beginPath();
-    ctx.moveTo(tailX, -h * 0.2);
-    ctx.lineTo(tailX - 14 - Math.random() * 3, 0);
-    ctx.lineTo(tailX, h * 0.2);
-    ctx.closePath();
-    ctx.fill();
-  }}
-
-  // cockpit canopy (domed glass highlight)
-  const canopyGrad = ctx.createRadialGradient(w * 0.09, -h * 0.05, 1, w * 0.12, 0, w * 0.16);
-  canopyGrad.addColorStop(0, '#ffffff');
-  canopyGrad.addColorStop(0.5, 'rgba(255,255,255,0.85)');
-  canopyGrad.addColorStop(1, COLORS.secondary);
-  ctx.fillStyle = canopyGrad;
-  ctx.beginPath();
-  ctx.ellipse(w * 0.12, 0, w * 0.14, h * 0.16, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = COLORS.primary;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.restore();
-
-  if (gameOver) {{
-    ctx.fillStyle = 'rgba(5,5,20,0.5)';
-    ctx.fillRect(0, 0, W, H);
-  }}
+  // stars drift slowly
+  stars.position.z += gameSpeed * dt * 0.02;
+  if (stars.position.z > 30) stars.position.z = 0;
 }}
 
 let lastTime = null;
 function loop(ts) {{
   if (lastTime === null) lastTime = ts;
-  let dt = (ts - lastTime) / (1000 / 60); // normalize to 60fps units
+  let dt = (ts - lastTime) / (1000 / 60);
   lastTime = ts;
-  dt = Math.max(0.1, Math.min(dt, 2.5)); // clamp to avoid big jumps on tab-switch/lag
+  dt = Math.max(0.1, Math.min(dt, 2.5));
   update(dt);
-  draw();
+  renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }}
 
 function endGame() {{
+  if (gameOver) return;
   running = false;
   gameOver = true;
   overlay.style.display = 'flex';
   const best = Math.max(score, parseInt(bestLabel.textContent.split(': ')[1]));
   bestLabel.textContent = 'Best: ' + best;
-  document.getElementById('startBtn').textContent = '↻ Run Again';
+  startBtn.textContent = '↻ Run Again';
   overlay.querySelector('h1').textContent = '💥 Crashed!';
   overlay.querySelector('p').textContent = 'Score: ' + score;
   window.parent.postMessage({{ type: 'orbitparkour_score', score: score }}, '*');
@@ -644,35 +484,21 @@ startBtn.addEventListener('click', () => {{
   overlay.style.display = 'none';
 }});
 
+function handleResize() {{
+  const w = holder.clientWidth, h = holder.clientHeight;
+  if (w === 0 || h === 0) return;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}}
+window.addEventListener('resize', handleResize);
+setTimeout(handleResize, 50);
+
 requestAnimationFrame(loop);
+}})();
 </script>
 </body>
 </html>
 """
 
 components.html(game_html, height=460, scrolling=False)
-
-st.markdown("""
-<div style="text-align:center; margin-top: 14px; color: rgba(255,255,255,0.45); font-size: 13px;">
-Controls: <b>Space</b> to jump, <b>hold ↑</b> to fly, <b>hold ↓</b> to slide — or tap/hold top/bottom half of the canvas on mobile.
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("---")
-
-col1, col2 = st.columns([2, 1])
-with col1:
-    st.markdown("#### 📝 Log your run")
-    st.caption("Since the canvas game runs in-browser, enter your score here after a run to save it to your history.")
-with col2:
-    manual_score = st.number_input("Score", min_value=0, step=10, label_visibility="collapsed")
-    if st.button("💾 Save Score", use_container_width=True):
-        st.session_state.scores["history"].append({
-            "score": int(manual_score),
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M")
-        })
-        if manual_score > st.session_state.scores["high_score"]:
-            st.session_state.scores["high_score"] = int(manual_score)
-            st.success("🏆 New high score!")
-        save_scores(st.session_state.scores)
-        st.rerun()
