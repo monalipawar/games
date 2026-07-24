@@ -501,39 +501,69 @@ function draw() {{
   ctx.translate(cx, cy);
   ctx.rotate(tilt);
 
+  const w = player.w, h = curH2;
+  const noseX = w * 0.62;
+  const tailX = -w * 0.55;
+
   if (thrusting) {{
     ctx.shadowColor = COLORS.secondary;
     ctx.shadowBlur = 18;
   }}
 
-  const pg = ctx.createLinearGradient(-player.w/2, -curH2/2, -player.w/2, curH2/2);
+  // main fuselage (pointed nose, tapered tail)
+  const pg = ctx.createLinearGradient(tailX, -h/2, tailX, h/2);
   pg.addColorStop(0, COLORS.primary);
   pg.addColorStop(1, COLORS.secondary);
   ctx.fillStyle = pg;
-  drawRoundedRect(-player.w/2, -curH2/2, player.w, curH2, 10);
+  ctx.beginPath();
+  ctx.moveTo(noseX, 0);
+  ctx.quadraticCurveTo(w * 0.15, -h * 0.42, tailX, -h * 0.3);
+  ctx.lineTo(tailX, h * 0.3);
+  ctx.quadraticCurveTo(w * 0.15, h * 0.42, noseX, 0);
+  ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.6)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
+  // swept wings
+  ctx.fillStyle = COLORS.accent;
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.05, -h * 0.18);
+  ctx.lineTo(-w * 0.35, -h * 0.85);
+  ctx.lineTo(-w * 0.5, -h * 0.85);
+  ctx.lineTo(-w * 0.2, -h * 0.12);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.05, h * 0.18);
+  ctx.lineTo(-w * 0.35, h * 0.85);
+  ctx.lineTo(-w * 0.5, h * 0.85);
+  ctx.lineTo(-w * 0.2, h * 0.12);
+  ctx.closePath();
+  ctx.fill();
+
   ctx.shadowBlur = 0;
 
-  // small rear thruster flame when flying
+  // rear thruster flame when flying
   if (thrusting) {{
     ctx.fillStyle = COLORS.accent;
     ctx.beginPath();
-    ctx.moveTo(-player.w/2, -6);
-    ctx.lineTo(-player.w/2 - 12 - Math.random() * 3, 0);
-    ctx.lineTo(-player.w/2, 6);
+    ctx.moveTo(tailX, -h * 0.2);
+    ctx.lineTo(tailX - 14 - Math.random() * 3, 0);
+    ctx.lineTo(tailX, h * 0.2);
     ctx.closePath();
     ctx.fill();
   }}
 
-  // visor
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  // cockpit canopy
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.beginPath();
-  ctx.arc(2, -curH2 * 0.18, 5, 0, Math.PI * 2);
+  ctx.ellipse(w * 0.12, 0, w * 0.14, h * 0.16, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = COLORS.primary;
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
   ctx.restore();
 
