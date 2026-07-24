@@ -497,23 +497,35 @@ function draw() {{
   const cy = player.y - curH2 / 2;
   const tilt = player.tilt;
 
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(tilt);
-
   const w = player.w, h = curH2;
   const noseX = w * 0.62;
   const tailX = -w * 0.55;
+
+  // ground contact shadow (depth cue: shrinks/fades as ship gains altitude)
+  const altRatio = Math.max(0, Math.min(1, (groundY - player.y) / (groundY - ceilingY)));
+  ctx.save();
+  ctx.globalAlpha = 0.35 * (1 - altRatio * 0.7);
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.ellipse(cx, groundY + 6, w * 0.42 * (1 - altRatio * 0.3), 6 * (1 - altRatio * 0.4), 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(tilt);
 
   if (thrusting) {{
     ctx.shadowColor = COLORS.secondary;
     ctx.shadowBlur = 18;
   }}
 
-  // main fuselage (pointed nose, tapered tail)
-  const pg = ctx.createLinearGradient(tailX, -h/2, tailX, h/2);
-  pg.addColorStop(0, COLORS.primary);
-  pg.addColorStop(1, COLORS.secondary);
+  // main fuselage (pointed nose, tapered tail) — diagonal light-to-dark gradient for a 3D rounded feel
+  const pg = ctx.createLinearGradient(-w * 0.2, -h * 0.5, w * 0.2, h * 0.5);
+  pg.addColorStop(0, '#ffffff');
+  pg.addColorStop(0.28, COLORS.secondary);
+  pg.addColorStop(0.65, COLORS.primary);
+  pg.addColorStop(1, '#0a0a1a');
   ctx.fillStyle = pg;
   ctx.beginPath();
   ctx.moveTo(noseX, 0);
@@ -526,8 +538,29 @@ function draw() {{
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // swept wings
-  ctx.fillStyle = COLORS.accent;
+  // top specular highlight strip (fakes a curved/rounded hull catching light)
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath();
+  ctx.ellipse(w * 0.05, -h * 0.2, w * 0.32, h * 0.1, -0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // underside shade (grounds the shape, reads as the shadowed bottom half)
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(0, h * 0.28, w * 0.5, h * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // swept wings (gradient shaded for depth)
+  const wingGradTop = ctx.createLinearGradient(-w * 0.5, -h * 0.85, -w * 0.05, -h * 0.12);
+  wingGradTop.addColorStop(0, '#2a1a4a');
+  wingGradTop.addColorStop(1, COLORS.accent);
+  ctx.fillStyle = wingGradTop;
   ctx.beginPath();
   ctx.moveTo(-w * 0.05, -h * 0.18);
   ctx.lineTo(-w * 0.35, -h * 0.85);
@@ -535,6 +568,10 @@ function draw() {{
   ctx.lineTo(-w * 0.2, -h * 0.12);
   ctx.closePath();
   ctx.fill();
+  const wingGradBottom = ctx.createLinearGradient(-w * 0.5, h * 0.85, -w * 0.05, h * 0.12);
+  wingGradBottom.addColorStop(0, '#2a1a4a');
+  wingGradBottom.addColorStop(1, COLORS.accent);
+  ctx.fillStyle = wingGradBottom;
   ctx.beginPath();
   ctx.moveTo(-w * 0.05, h * 0.18);
   ctx.lineTo(-w * 0.35, h * 0.85);
@@ -556,8 +593,12 @@ function draw() {{
     ctx.fill();
   }}
 
-  // cockpit canopy
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  // cockpit canopy (domed glass highlight)
+  const canopyGrad = ctx.createRadialGradient(w * 0.09, -h * 0.05, 1, w * 0.12, 0, w * 0.16);
+  canopyGrad.addColorStop(0, '#ffffff');
+  canopyGrad.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+  canopyGrad.addColorStop(1, COLORS.secondary);
+  ctx.fillStyle = canopyGrad;
   ctx.beginPath();
   ctx.ellipse(w * 0.12, 0, w * 0.14, h * 0.16, 0, 0, Math.PI * 2);
   ctx.fill();
