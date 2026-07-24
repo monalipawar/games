@@ -217,7 +217,7 @@ game_html = f"""
     <h1>🪐 ORBITPARKOUR</h1>
     <p>Jump asteroids. Slide under debris. Dodge flyers. Don't crash.</p>
     <button id="startBtn">▶ Start Run</button>
-    <p class="hint">Hold SPACE / ↑ / Tap-top = Fly &nbsp;•&nbsp; Hold ↓ / Tap-bottom = Slide</p>
+    <p class="hint">SPACE = Jump &nbsp;•&nbsp; Hold ↑ / Tap-top = Fly &nbsp;•&nbsp; Hold ↓ / Tap-bottom = Slide</p>
   </div>
 </div>
 
@@ -274,17 +274,23 @@ function flyStart() {{
   if (running && !player.sliding) thrusting = true;
 }}
 function flyEnd() {{ thrusting = false; }}
+function jumpImpulse() {{
+  if (running && !player.sliding) {{
+    player.vy = -9.5;
+  }}
+}}
 function slideStart() {{
   if (running && player.y >= groundY - 1) player.sliding = true;
 }}
 function slideEnd() {{ player.sliding = false; }}
 
 document.addEventListener('keydown', (e) => {{
-  if (e.code === 'Space' || e.code === 'ArrowUp') {{ e.preventDefault(); flyStart(); }}
+  if (e.code === 'Space') {{ e.preventDefault(); if (!e.repeat) jumpImpulse(); }}
+  if (e.code === 'ArrowUp') {{ e.preventDefault(); flyStart(); }}
   if (e.code === 'ArrowDown') {{ e.preventDefault(); slideStart(); }}
 }});
 document.addEventListener('keyup', (e) => {{
-  if (e.code === 'Space' || e.code === 'ArrowUp') flyEnd();
+  if (e.code === 'ArrowUp') flyEnd();
   if (e.code === 'ArrowDown') slideEnd();
 }});
 
@@ -325,7 +331,7 @@ function rectsOverlap(a, b) {{
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }}
 
-function update() {{
+function update(dt) {{
   if (!running) return;
   elapsed++;
   gameSpeed = Math.min(6.5, 2.8 + elapsed * 0.0006);
@@ -336,13 +342,13 @@ function update() {{
   player.h = curH;
   if (!player.sliding) {{
     if (thrusting) {{
-      player.vy -= 1.35;
+      player.vy -= 1.35 * dt;
       if (player.vy < -7.5) player.vy = -7.5;
     }} else {{
-      player.vy += 0.85;
+      player.vy += 0.85 * dt;
       if (player.vy > 9) player.vy = 9;
     }}
-    player.y += player.vy;
+    player.y += player.vy * dt;
     const topLimit = ceilingY + curH;
     if (player.y < topLimit) {{ player.y = topLimit; player.vy = 0; }}
     if (player.y >= groundY) {{ player.y = groundY; player.vy = 0; }}
@@ -364,19 +370,19 @@ function update() {{
     player.vy = 0;
   }}
   for (let p of particles) {{
-    p.x += p.vx; p.y += p.vy; p.life--;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
   }}
   particles = particles.filter(p => p.life > 0);
 
   // spawn
-  spawnTimer--;
+  spawnTimer -= dt;
   if (spawnTimer <= 0) {{
     spawnObstacle();
     spawnTimer = Math.max(60, 100 - elapsed * 0.01) + Math.random() * 35;
   }}
 
   // move obstacles
-  for (let o of obstacles) o.x -= gameSpeed;
+  for (let o of obstacles) o.x -= gameSpeed * dt;
   obstacles = obstacles.filter(o => o.x + o.w > -20);
 
   // collision
@@ -393,7 +399,7 @@ function update() {{
 
   // stars parallax
   for (let s of stars) {{
-    s.x -= s.s * (gameSpeed / 3);
+    s.x -= s.s * (gameSpeed / 3) * dt;
     if (s.x < 0) {{ s.x = W; s.y = Math.random() * (H - 90); }}
   }}
 
@@ -534,8 +540,13 @@ function draw() {{
   }}
 }}
 
-function loop() {{
-  update();
+let lastTime = null;
+function loop(ts) {{
+  if (lastTime === null) lastTime = ts;
+  let dt = (ts - lastTime) / (1000 / 60); // normalize to 60fps units
+  lastTime = ts;
+  dt = Math.max(0.1, Math.min(dt, 2.5)); // clamp to avoid big jumps on tab-switch/lag
+  update(dt);
   draw();
   requestAnimationFrame(loop);
 }}
@@ -559,7 +570,7 @@ startBtn.addEventListener('click', () => {{
   overlay.style.display = 'none';
 }});
 
-loop();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
@@ -569,7 +580,7 @@ components.html(game_html, height=460, scrolling=False)
 
 st.markdown("""
 <div style="text-align:center; margin-top: 14px; color: rgba(255,255,255,0.45); font-size: 13px;">
-Controls: <b>Hold Space / ↑</b> to fly, <b>hold ↓</b> to slide — or hold top/bottom half of the canvas on mobile.
+Controls: <b>Space</b> to jump, <b>hold ↑</b> to fly, <b>hold ↓</b> to slide — or tap/hold top/bottom half of the canvas on mobile.
 </div>
 """, unsafe_allow_html=True)
 
