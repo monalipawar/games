@@ -25,7 +25,7 @@ game_html = f"""
     overflow: hidden;
     border: 1px solid rgba(255,255,255,0.15);
     box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 0 60px rgba(124,77,255,0.08);
-    background: linear-gradient(180deg, {['bg2']} 0%, {t['bg1']} 100%);
+    background: linear-gradient(180deg, {t['bg2']} 0%, {t['bg1']} 100%);
   }}
   #gameCanvasHolder canvas {{ display: block; width: 100% !important; height: 100% !important; }}
   #hud {{
