@@ -1,3 +1,138 @@
+"""
+OrbitParkour — a cosmic endless-runner parkour game
+Part of Monali's App Universe
+
+Run with: streamlit run OrbitParkour.py
+"""
+
+import streamlit as st
+import streamlit.components.v1 as components
+import json
+import os
+from datetime import datetime
+
+# ---------------------------------------------------------------------------
+# Config & persistence
+# ---------------------------------------------------------------------------
+st.set_page_config(
+    page_title="OrbitParkour",
+    page_icon="🪐",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+SCORES_FILE = "orbitparkour_scores.json"
+
+
+def load_scores():
+    if os.path.exists(SCORES_FILE):
+        try:
+            with open(SCORES_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {"high_score": 0, "history": []}
+    return {"high_score": 0, "history": []}
+
+
+def save_scores(data):
+    with open(SCORES_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+if "scores" not in st.session_state:
+    st.session_state.scores = load_scores()
+
+# ---------------------------------------------------------------------------
+# THEMES — consistent with App Universe design system
+# ---------------------------------------------------------------------------
+THEMES = {
+    "Default": {"primary": "#7C4DFF", "secondary": "#00E5FF", "accent": "#FF4DA6", "bg1": "#0a0e27", "bg2": "#1a1445"},
+    "Cyberpunk": {"primary": "#FF2E92", "secondary": "#00FFF0", "accent": "#FFE600", "bg1": "#0d0221", "bg2": "#1f0140"},
+    "Sunset": {"primary": "#FF6B6B", "secondary": "#FFB347", "accent": "#FF3CAC", "bg1": "#1a0e2e", "bg2": "#3d1a4a"},
+    "Ocean": {"primary": "#00C9FF", "secondary": "#4FFBDF", "accent": "#0083FE", "bg1": "#031a2e", "bg2": "#0a3d5c"},
+    "Midnight": {"primary": "#5C6BC0", "secondary": "#9575CD", "accent": "#EC407A", "bg1": "#060818", "bg2": "#131a3a"},
+}
+
+if "opk_theme" not in st.session_state:
+    st.session_state.opk_theme = "Default"
+
+with st.sidebar:
+    st.markdown("### 🎨 Theme")
+    st.session_state.opk_theme = st.selectbox(
+        "Choose a theme", list(THEMES.keys()),
+        index=list(THEMES.keys()).index(st.session_state.opk_theme)
+    )
+    st.markdown("---")
+    st.markdown(f"### 🏆 High Score\n# {st.session_state.scores['high_score']}")
+    if st.session_state.scores["history"]:
+        st.markdown("### 📜 Recent Runs")
+        for run in reversed(st.session_state.scores["history"][-8:]):
+            st.caption(f"{run['score']} pts — {run['date']}")
+    if st.button("🗑️ Reset Scores"):
+        st.session_state.scores = {"high_score": 0, "history": []}
+        save_scores(st.session_state.scores)
+        st.rerun()
+
+t = THEMES[st.session_state.opk_theme]
+
+# ---------------------------------------------------------------------------
+# Global cosmic glassmorphism CSS
+# ---------------------------------------------------------------------------
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+
+html, body, [class*="css"] {{
+    font-family: 'Outfit', sans-serif;
+}}
+
+.stApp {{
+    background: radial-gradient(ellipse at top, {t['bg2']} 0%, {t['bg1']} 60%, #000000 100%);
+}}
+
+.opk-title {{
+    text-align: center;
+    font-size: 3rem;
+    font-weight: 800;
+    background: linear-gradient(90deg, {t['primary']}, {t['secondary']}, {t['accent']});
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0;
+    letter-spacing: 2px;
+}}
+
+.opk-subtitle {{
+    text-align: center;
+    color: rgba(255,255,255,0.6);
+    font-weight: 300;
+    margin-top: 0;
+    margin-bottom: 1.2rem;
+}}
+
+.opk-glass {{
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 20px;
+    padding: 10px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}}
+
+section[data-testid="stSidebar"] {{
+    background: rgba(10,14,39,0.85);
+    backdrop-filter: blur(10px);
+    border-right: 1px solid rgba(255,255,255,0.08);
+}}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<p class="opk-title">🪐 ORBITPARKOUR</p>', unsafe_allow_html=True)
+st.markdown('<p class="opk-subtitle">Dash across the asteroid belt — jump, slide, survive.</p>', unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Game canvas (HTML5 canvas embedded via components — required for real-time
+# input & animation loop, which Streamlit's rerun model can't drive smoothly)
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Game canvas (Three.js WebGL scene embedded via components — required for
 # real-time 3D rendering & input, which Streamlit's rerun model can't drive)
@@ -502,3 +637,30 @@ requestAnimationFrame(loop);
 """
 
 components.html(game_html, height=460, scrolling=False)
+
+components.html(game_html, height=460, scrolling=False)
+
+st.markdown("""
+<div style="text-align:center; margin-top: 14px; color: rgba(255,255,255,0.45); font-size: 13px;">
+Controls: <b>Space</b> to jump, <b>hold ↑</b> to fly, <b>hold ↓</b> to slide — or tap/hold top/bottom half of the canvas on mobile.
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
+
+col1, col2 = st.columns([2, 1])
+with col1:
+    st.markdown("#### 📝 Log your run")
+    st.caption("Since the canvas game runs in-browser, enter your score here after a run to save it to your history.")
+with col2:
+    manual_score = st.number_input("Score", min_value=0, step=10, label_visibility="collapsed")
+    if st.button("💾 Save Score", use_container_width=True):
+        st.session_state.scores["history"].append({
+            "score": int(manual_score),
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M")
+        })
+        if manual_score > st.session_state.scores["high_score"]:
+            st.session_state.scores["high_score"] = int(manual_score)
+            st.success("🏆 New high score!")
+        save_scores(st.session_state.scores)
+        st.rerun()
