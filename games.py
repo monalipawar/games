@@ -259,8 +259,8 @@ const BASE_W = 900, BASE_H = 420;
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(hexToInt(COLORS.bg1), 20, 95);
 
-const camera = new THREE.PerspectiveCamera(58, BASE_W / BASE_H, 0.1, 200);
-camera.position.set(0, 5.4, 11.5);
+const camera = new THREE.PerspectiveCamera(68, BASE_W / BASE_H, 0.1, 200);
+camera.position.set(0, 5.8, 13.5);
 camera.lookAt(0, 3, -10);
 
 const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
@@ -300,7 +300,7 @@ const segLen = 20;
 const segCount = 6;
 for (let i = 0; i < segCount; i++) {{
   const g = new THREE.Group();
-  const planeGeo = new THREE.PlaneGeometry(24, segLen);
+  const planeGeo = new THREE.PlaneGeometry(34, segLen);
   const planeMat = new THREE.MeshStandardMaterial({{
     color: hexToInt(COLORS.bg2), roughness: 0.8, metalness: 0.2,
     emissive: hexToInt(COLORS.primary), emissiveIntensity: 0.06
@@ -308,7 +308,7 @@ for (let i = 0; i < segCount; i++) {{
   const plane = new THREE.Mesh(planeGeo, planeMat);
   plane.rotation.x = -Math.PI / 2;
   g.add(plane);
-  const gridHelper = new THREE.GridHelper(24, 12, hexToInt(COLORS.secondary), hexToInt(COLORS.primary));
+  const gridHelper = new THREE.GridHelper(34, 17, hexToInt(COLORS.secondary), hexToInt(COLORS.primary));
   gridHelper.material.transparent = true;
   gridHelper.material.opacity = 0.35;
   g.add(gridHelper);
@@ -476,7 +476,7 @@ holder.addEventListener('mouseup', () => {{ flyEnd(); slideEnd(); leftEnd(); rig
 function spawnObstacle() {{
   const r = Math.random();
   const spawnZ = -70;
-  const laneX = (Math.random() - 0.5) * 6.4;
+  const laneX = (Math.random() - 0.5) * 15.5;
   let mesh, type, radius;
   if (r < 0.4) {{
     const size = 0.7 + Math.random() * 0.55;
@@ -519,11 +519,11 @@ function update(dt) {{
 
   const shipBaseY = groundY + 1.2;
   const shipTopY = ceilingY - 0.8;
-  const laneLimit = 4.0;
+  const laneLimit = 9.2;
 
   // horizontal steering
-  const steerAccel = 0.9;
-  const steerMax = 8.5;
+  const steerAccel = 1.3;
+  const steerMax = 13;
   const steerDamp = 0.82;
   if (steerLeft && !steerRight) {{
     player.vx -= steerAccel * dt;
@@ -541,13 +541,11 @@ function update(dt) {{
   player.roll += (targetRoll - player.roll) * Math.min(1, 0.25 * dt);
 
   if (!player.sliding) {{
-    if (thrusting) {{
-      player.vy -= 0.85 * dt;
-      if (player.vy < -5.5) player.vy = -5.5;
-    }} else {{
-      player.vy += 0.85 * dt;
-      if (player.vy > 9) player.vy = 9;
-    }}
+    const climbTarget = -7.2;
+    const fallTarget = 12.5;
+    const targetVy = thrusting ? climbTarget : fallTarget;
+    const approachRate = thrusting ? 0.10 : 0.22; // falling pulls in faster so you don't just hang in the air
+    player.vy += (targetVy - player.vy) * Math.min(1, approachRate * dt);
     player.y += player.vy * dt * 0.09;
     if (player.y < shipBaseY) {{ player.y = shipBaseY; player.vy = 0; }}
     if (player.y > shipTopY) {{ player.y = shipTopY; player.vy = 0; }}
@@ -568,8 +566,8 @@ function update(dt) {{
   const scaleY = player.sliding ? 0.55 : 1;
   shipGroup.scale.y += (scaleY - shipGroup.scale.y) * Math.min(1, 0.4 * dt);
 
-  const camTargetX = player.x * 0.6;
-  camera.position.x += (camTargetX - camera.position.x) * Math.min(1, 0.12 * dt);
+  const camTargetX = player.x * 0.75;
+  camera.position.x += (camTargetX - camera.position.x) * Math.min(1, 0.15 * dt);
   camera.lookAt(camTargetX, 3, -10);
 
   engineGlow.intensity = thrusting ? 1.4 : 0;
