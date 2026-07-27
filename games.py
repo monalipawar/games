@@ -229,7 +229,7 @@ game_html = f"""
     <h1>🪐 ORBITPARKOUR</h1>
     <p>Jump asteroids. Slide under debris. Dodge flyers. Don't crash.</p>
     <button id="startBtn">▶ Start Run</button>
-    <p class="hint">SPACE = Jump &nbsp;•&nbsp; Hold ↑ / Tap-top = Fly &nbsp;•&nbsp; Hold ↓ / Tap-bottom = Slide</p>
+    <p class="hint">SPACE = Jump &nbsp;•&nbsp; ↑ / Top = Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer</p>
   </div>
 </div>
 
@@ -300,7 +300,7 @@ const segLen = 20;
 const segCount = 6;
 for (let i = 0; i < segCount; i++) {{
   const g = new THREE.Group();
-  const planeGeo = new THREE.PlaneGeometry(16, segLen);
+  const planeGeo = new THREE.PlaneGeometry(24, segLen);
   const planeMat = new THREE.MeshStandardMaterial({{
     color: hexToInt(COLORS.bg2), roughness: 0.8, metalness: 0.2,
     emissive: hexToInt(COLORS.primary), emissiveIntensity: 0.06
@@ -308,7 +308,7 @@ for (let i = 0; i < segCount; i++) {{
   const plane = new THREE.Mesh(planeGeo, planeMat);
   plane.rotation.x = -Math.PI / 2;
   g.add(plane);
-  const gridHelper = new THREE.GridHelper(16, 8, hexToInt(COLORS.secondary), hexToInt(COLORS.primary));
+  const gridHelper = new THREE.GridHelper(24, 12, hexToInt(COLORS.secondary), hexToInt(COLORS.primary));
   gridHelper.material.transparent = true;
   gridHelper.material.opacity = 0.35;
   g.add(gridHelper);
@@ -406,9 +406,10 @@ function makeFlyer(size) {{
 
 // ---------- game state ----------
 let player, obstacles, gameSpeed, score, running, gameOver, spawnTimer, elapsed, thrusting;
+let steerLeft = false, steerRight = false;
 
 function resetGame() {{
-  player = {{ y: groundY, vy: 0, sliding: false, tilt: 0 }};
+  player = {{ x: 0, y: groundY, vy: 0, vx: 0, sliding: false, tilt: 0, roll: 0 }};
   for (const o of obstacles || []) scene.remove(o.mesh);
   obstacles = [];
   for (const p of particles) scene.remove(p.sprite);
@@ -420,9 +421,12 @@ function resetGame() {{
   running = false;
   gameOver = false;
   thrusting = false;
+  steerLeft = false;
+  steerRight = false;
   shipGroup.position.set(0, groundY + 1.2, 0);
   shipGroup.rotation.set(0, Math.PI, 0);
   shipGroup.scale.set(1, 1, 1);
+  camera.position.x = 0;
 }}
 resetGame();
 
@@ -432,40 +436,56 @@ function jumpImpulse() {{ if (running && !player.sliding) player.vy = -(-9.5) * 
 function slideStart() {{ if (running && player.y <= groundY + 1.2 + 0.05) player.sliding = true; }}
 function slideEnd() {{ player.sliding = false; }}
 
+function leftStart() {{ steerLeft = true; }}
+function leftEnd() {{ steerLeft = false; }}
+function rightStart() {{ steerRight = true; }}
+function rightEnd() {{ steerRight = false; }}
+
 document.addEventListener('keydown', (e) => {{
   if (e.code === 'Space') {{ e.preventDefault(); if (!e.repeat) jumpImpulse(); }}
   if (e.code === 'ArrowUp') {{ e.preventDefault(); flyStart(); }}
   if (e.code === 'ArrowDown') {{ e.preventDefault(); slideStart(); }}
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') {{ e.preventDefault(); leftStart(); }}
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') {{ e.preventDefault(); rightStart(); }}
 }});
 document.addEventListener('keyup', (e) => {{
   if (e.code === 'ArrowUp') flyEnd();
   if (e.code === 'ArrowDown') slideEnd();
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') leftEnd();
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') rightEnd();
 }});
 holder.addEventListener('touchstart', (e) => {{
   const rect = holder.getBoundingClientRect();
   const touchY = e.touches[0].clientY - rect.top;
-  if (touchY < rect.height / 2) flyStart(); else slideStart();
+  const touchX = e.touches[0].clientX - rect.left;
+  if (touchX < rect.width / 3) leftStart();
+  else if (touchX > rect.width * 2 / 3) rightStart();
+  else if (touchY < rect.height / 2) flyStart(); else slideStart();
 }});
-holder.addEventListener('touchend', () => {{ flyEnd(); slideEnd(); }});
+holder.addEventListener('touchend', () => {{ flyEnd(); slideEnd(); leftEnd(); rightEnd(); }});
 holder.addEventListener('mousedown', (e) => {{
   const rect = holder.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
-  if (clickY < rect.height / 2) flyStart(); else slideStart();
+  if (clickX < rect.width / 3) leftStart();
+  else if (clickX > rect.width * 2 / 3) rightStart();
+  else if (clickY < rect.height / 2) flyStart(); else slideStart();
 }});
-holder.addEventListener('mouseup', () => {{ flyEnd(); slideEnd(); }});
+holder.addEventListener('mouseup', () => {{ flyEnd(); slideEnd(); leftEnd(); rightEnd(); }});
 
 function spawnObstacle() {{
   const r = Math.random();
   const spawnZ = -70;
+  const laneX = (Math.random() - 0.5) * 6.4;
   let mesh, type, radius;
   if (r < 0.4) {{
     const size = 0.7 + Math.random() * 0.55;
     mesh = makeRock(size);
-    mesh.position.set(0, groundY + size * 0.85, spawnZ);
+    mesh.position.set(laneX, groundY + size * 0.85, spawnZ);
     type = 'rock'; radius = size;
   }} else if (r < 0.65) {{
     mesh = makeDebris(2.1, 0.6, 0.6);
-    mesh.position.set(0, groundY + 2.6, spawnZ);
+    mesh.position.set(laneX, groundY + 2.6, spawnZ);
     type = 'debris'; radius = 0.5;
   }} else {{
     const size = 0.75 + Math.random() * 0.45;
@@ -473,11 +493,11 @@ function spawnObstacle() {{
     const maxY = groundY + 1.6;
     const y = maxY + Math.random() * (minY - maxY);
     mesh = makeFlyer(size);
-    mesh.position.set(0, y, spawnZ);
+    mesh.position.set(laneX, y, spawnZ);
     type = 'flyer'; radius = size;
   }}
   scene.add(mesh);
-  obstacles.push({{ mesh, type, radius, z: spawnZ }});
+  obstacles.push({{ mesh, type, radius, z: spawnZ, x: laneX }});
 }}
 
 function spawnParticle() {{
@@ -499,6 +519,26 @@ function update(dt) {{
 
   const shipBaseY = groundY + 1.2;
   const shipTopY = ceilingY - 0.8;
+  const laneLimit = 4.0;
+
+  // horizontal steering
+  const steerAccel = 0.9;
+  const steerMax = 8.5;
+  const steerDamp = 0.82;
+  if (steerLeft && !steerRight) {{
+    player.vx -= steerAccel * dt;
+  }} else if (steerRight && !steerLeft) {{
+    player.vx += steerAccel * dt;
+  }} else {{
+    player.vx *= Math.pow(steerDamp, dt);
+  }}
+  player.vx = Math.max(-steerMax, Math.min(steerMax, player.vx));
+  player.x += player.vx * dt * 0.09;
+  if (player.x < -laneLimit) {{ player.x = -laneLimit; player.vx = 0; }}
+  if (player.x > laneLimit) {{ player.x = laneLimit; player.vx = 0; }}
+
+  const targetRoll = Math.max(-0.5, Math.min(0.5, -player.vx * 0.06));
+  player.roll += (targetRoll - player.roll) * Math.min(1, 0.25 * dt);
 
   if (!player.sliding) {{
     if (thrusting) {{
@@ -519,12 +559,18 @@ function update(dt) {{
   }}
 
   shipGroup.position.y = player.y;
+  shipGroup.position.x = player.x;
   const altRatio = Math.max(0, Math.min(1, (player.y - shipBaseY) / (shipTopY - shipBaseY)));
   const targetTilt = Math.max(-0.4, Math.min(0.4, -player.vy * 0.05));
   player.tilt += (targetTilt - player.tilt) * Math.min(1, 0.25 * dt);
   shipGroup.rotation.x = -player.tilt;
+  shipGroup.rotation.z = player.roll;
   const scaleY = player.sliding ? 0.55 : 1;
   shipGroup.scale.y += (scaleY - shipGroup.scale.y) * Math.min(1, 0.4 * dt);
+
+  const camTargetX = player.x * 0.6;
+  camera.position.x += (camTargetX - camera.position.x) * Math.min(1, 0.12 * dt);
+  camera.lookAt(camTargetX, 3, -10);
 
   engineGlow.intensity = thrusting ? 1.4 : 0;
   flame.visible = thrusting;
@@ -567,8 +613,9 @@ function update(dt) {{
     o.mesh.rotation.y += 0.015 * dt;
 
     const dz = Math.abs(o.z - shipZ);
+    const dx = Math.abs(o.x - shipGroup.position.x);
     const dy = Math.abs(o.mesh.position.y - shipGroup.position.y);
-    if (dz < 1.0 && dy < (o.radius + 0.65)) {{
+    if (dz < 1.0 && dx < (o.radius + 0.85) && dy < (o.radius + 0.65)) {{
       endGame();
     }}
   }}
@@ -642,7 +689,7 @@ components.html(game_html, height=460, scrolling=False)
 
 st.markdown("""
 <div style="text-align:center; margin-top: 14px; color: rgba(255,255,255,0.45); font-size: 13px;">
-Controls: <b>Space</b> to jump, <b>hold ↑</b> to fly, <b>hold ↓</b> to slide — or tap/hold top/bottom half of the canvas on mobile.
+Controls: <b>Space</b> to jump, <b>hold ↑</b> to fly, <b>hold ↓</b> to slide, <b>← → / A D</b> to steer — or hold left/right/top/bottom thirds of the canvas on mobile.
 </div>
 """, unsafe_allow_html=True)
 
