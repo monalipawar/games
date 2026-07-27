@@ -403,10 +403,36 @@ function makeFlyer(size) {{
   }});
   return new THREE.Mesh(geo, mat);
 }}
+function makeShooter(size) {{
+  const geo = new THREE.DodecahedronGeometry(size, 0);
+  const mat = new THREE.MeshStandardMaterial({{
+    color: 0xff3355, roughness: 0.4, metalness: 0.6,
+    emissive: 0xff3355, emissiveIntensity: 0.5, flatShading: true
+  }});
+  return new THREE.Mesh(geo, mat);
+}}
+function makePlayerBolt() {{
+  const geo = new THREE.SphereGeometry(0.16, 8, 8);
+  const mat = new THREE.MeshBasicMaterial({{ color: hexToInt(COLORS.secondary) }});
+  const m = new THREE.Mesh(geo, mat);
+  const light = new THREE.PointLight(hexToInt(COLORS.secondary), 0.8, 3);
+  m.add(light);
+  return m;
+}}
+function makeEnemyBolt() {{
+  const geo = new THREE.SphereGeometry(0.18, 8, 8);
+  const mat = new THREE.MeshBasicMaterial({{ color: 0xff3355 }});
+  const m = new THREE.Mesh(geo, mat);
+  const light = new THREE.PointLight(0xff3355, 0.8, 3);
+  m.add(light);
+  return m;
+}}
 
 // ---------- game state ----------
 let player, obstacles, gameSpeed, score, running, gameOver, spawnTimer, elapsed, thrusting;
 let steerLeft = false, steerRight = false;
+let playerBolts = [], enemyBolts = [];
+let shootCooldown = 0;
 
 function resetGame() {{
   player = {{ x: 0, y: groundY, vy: 0, vx: 0, sliding: false, tilt: 0, roll: 0 }};
@@ -416,13 +442,18 @@ function resetGame() {{
   particles = [];
   gameSpeed = 3.6;
   score = 0;
-  spawnTimer = 48;
+  spawnTimer = 30;
   elapsed = 0;
   running = false;
   gameOver = false;
   thrusting = false;
   steerLeft = false;
   steerRight = false;
+  for (const b of (playerBolts || [])) scene.remove(b.mesh);
+  playerBolts = [];
+  for (const b of (enemyBolts || [])) scene.remove(b.mesh);
+  enemyBolts = [];
+  shootCooldown = 0;
   shipGroup.position.set(0, groundY + 1.2, 0);
   shipGroup.rotation.set(0, Math.PI, 0);
   shipGroup.scale.set(1, 1, 1);
@@ -432,7 +463,7 @@ resetGame();
 
 function flyStart() {{ if (running && !player.sliding) thrusting = true; }}
 function flyEnd() {{ thrusting = false; }}
-function jumpImpulse() {{ if (running && !player.sliding) player.vy = -(-9.5) * -1 * 0 + 4.4; }}
+function jumpImpulse() {{ if (running && !player.sliding) player.vy = 4.4; }}
 function slideStart() {{ if (running && player.y <= groundY + 1.2 + 0.05) player.sliding = true; }}
 function slideEnd() {{ player.sliding = false; }}
 
@@ -440,6 +471,12 @@ function leftStart() {{ steerLeft = true; }}
 function leftEnd() {{ steerLeft = false; }}
 function rightStart() {{ steerRight = true; }}
 function rightEnd() {{ steerRight = false; }}
+function requestShoot() {{
+  if (running && shootCooldown <= 0) {{
+    spawnPlayerBolt();
+    shootCooldown = 14;
+  }}
+}}
 
 document.addEventListener('keydown', (e) => {{
   if (e.code === 'Space') {{ e.preventDefault(); if (!e.repeat) jumpImpulse(); }}
@@ -447,6 +484,7 @@ document.addEventListener('keydown', (e) => {{
   if (e.code === 'ArrowDown') {{ e.preventDefault(); slideStart(); }}
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') {{ e.preventDefault(); leftStart(); }}
   if (e.code === 'ArrowRight' || e.code === 'KeyD') {{ e.preventDefault(); rightStart(); }}
+  if (e.code === 'KeyF') {{ e.preventDefault(); if (!e.repeat) requestShoot(); }}
 }});
 document.addEventListener('keyup', (e) => {{
   if (e.code === 'ArrowUp') flyEnd();
@@ -478,16 +516,16 @@ function spawnObstacle() {{
   const spawnZ = -70;
   const laneX = (Math.random() - 0.5) * 15.5;
   let mesh, type, radius;
-  if (r < 0.4) {{
+  if (r < 0.32) {{
     const size = 0.7 + Math.random() * 0.55;
     mesh = makeRock(size);
     mesh.position.set(laneX, groundY + size * 0.85, spawnZ);
     type = 'rock'; radius = size;
-  }} else if (r < 0.65) {{
+  }} else if (r < 0.54) {{
     mesh = makeDebris(2.1, 0.6, 0.6);
     mesh.position.set(laneX, groundY + 2.6, spawnZ);
     type = 'debris'; radius = 0.5;
-  }} else {{
+  }} else if (r < 0.78) {{
     const size = 0.75 + Math.random() * 0.45;
     const minY = ceilingY - 1.5;
     const maxY = groundY + 1.6;
@@ -495,9 +533,36 @@ function spawnObstacle() {{
     mesh = makeFlyer(size);
     mesh.position.set(laneX, y, spawnZ);
     type = 'flyer'; radius = size;
+  }} else {{
+    const size = 0.8;
+    const minY = ceilingY - 1.5;
+    const maxY = groundY + 1.6;
+    const y = maxY + Math.random() * (minY - maxY);
+    mesh = makeShooter(size);
+    mesh.position.set(laneX, y, spawnZ);
+    type = 'shooter'; radius = size;
   }}
   scene.add(mesh);
-  obstacles.push({{ mesh, type, radius, z: spawnZ, x: laneX }});
+  obstacles.push({{ mesh, type, radius, z: spawnZ, x: laneX, fireTimer: 40 + Math.random() * 40, hp: 1 }});
+}}
+
+function spawnPlayerBolt() {{
+  const mesh = makePlayerBolt();
+  mesh.position.copy(shipGroup.position);
+  mesh.position.z -= 1.4;
+  scene.add(mesh);
+  playerBolts.push({{ mesh }});
+}}
+
+function spawnEnemyBolt(fromObstacle) {{
+  const mesh = makeEnemyBolt();
+  mesh.position.copy(fromObstacle.mesh.position);
+  scene.add(mesh);
+  const dx = shipGroup.position.x - fromObstacle.mesh.position.x;
+  const dy = shipGroup.position.y - fromObstacle.mesh.position.y;
+  const dz = shipGroup.position.z - fromObstacle.mesh.position.z;
+  const dist = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+  enemyBolts.push({{ mesh, vx: dx / dist, vy: dy / dist, vz: dz / dist }});
 }}
 
 function spawnParticle() {{
@@ -541,8 +606,8 @@ function update(dt) {{
   player.roll += (targetRoll - player.roll) * Math.min(1, 0.25 * dt);
 
   if (!player.sliding) {{
-    const climbTarget = -7.2;
-    const fallTarget = 12.5;
+    const climbTarget = 7.2;
+    const fallTarget = -12.5;
     const targetVy = thrusting ? climbTarget : fallTarget;
     const approachRate = thrusting ? 0.10 : 0.22; // falling pulls in faster so you don't just hang in the air
     player.vy += (targetVy - player.vy) * Math.min(1, approachRate * dt);
@@ -599,7 +664,7 @@ function update(dt) {{
   spawnTimer -= dt;
   if (spawnTimer <= 0) {{
     spawnObstacle();
-    spawnTimer = Math.max(38, 65 - elapsed * 0.01) + Math.random() * 22;
+    spawnTimer = Math.max(22, 40 - elapsed * 0.008) + Math.random() * 14;
   }}
 
   // move obstacles toward camera, check collision
