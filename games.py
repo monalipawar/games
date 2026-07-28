@@ -225,11 +225,16 @@ game_html = f"""
     <span id="scoreLabel">Score: 0</span>
     <span id="bestLabel">Best: {st.session_state.scores['high_score']}</span>
   </div>
+  <button id="shootBtn" style="
+    position:absolute; bottom:14px; right:14px; z-index:5;
+    width:56px; height:56px; border-radius:50%; border:2px solid rgba(255,255,255,0.4);
+    background:linear-gradient(135deg,{t['accent']},{t['primary']}); color:white; font-size:22px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.5); cursor:pointer;">🔫</button>
   <div id="overlay">
     <h1>🪐 ORBITPARKOUR</h1>
-    <p>Jump asteroids. Slide under debris. Dodge flyers. Don't crash.</p>
+    <p>Jump asteroids. Slide under debris. Shoot back. Don't crash.</p>
     <button id="startBtn">▶ Start Run</button>
-    <p class="hint">SPACE = Jump &nbsp;•&nbsp; ↑ / Top = Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer</p>
+    <p class="hint">SPACE = Jump &nbsp;•&nbsp; ↑ / Top = Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer &nbsp;•&nbsp; F / 🔫 = Shoot</p>
   </div>
 </div>
 
@@ -252,6 +257,7 @@ const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('startBtn');
 const scoreLabel = document.getElementById('scoreLabel');
 const bestLabel = document.getElementById('bestLabel');
+const shootBtn = document.getElementById('shootBtn');
 
 const BASE_W = 900, BASE_H = 420;
 
@@ -510,6 +516,8 @@ holder.addEventListener('mousedown', (e) => {{
   else if (clickY < rect.height / 2) flyStart(); else slideStart();
 }});
 holder.addEventListener('mouseup', () => {{ flyEnd(); slideEnd(); leftEnd(); rightEnd(); }});
+shootBtn.addEventListener('click', (e) => {{ e.stopPropagation(); requestShoot(); }});
+shootBtn.addEventListener('touchstart', (e) => {{ e.stopPropagation(); e.preventDefault(); requestShoot(); }});
 
 function spawnObstacle() {{
   const r = Math.random();
@@ -675,15 +683,63 @@ function update(dt) {{
     o.mesh.rotation.x += 0.01 * dt;
     o.mesh.rotation.y += 0.015 * dt;
 
+    if (o.type === 'shooter' && o.hp > 0 && o.z > -55 && o.z < -6) {{
+      o.fireTimer -= dt;
+      if (o.fireTimer <= 0) {{
+        spawnEnemyBolt(o);
+        o.fireTimer = 70 + Math.random() * 50;
+      }}
+    }}
+
     const dz = Math.abs(o.z - shipZ);
     const dx = Math.abs(o.x - shipGroup.position.x);
     const dy = Math.abs(o.mesh.position.y - shipGroup.position.y);
-    if (dz < 1.0 && dx < (o.radius + 0.85) && dy < (o.radius + 0.65)) {{
+    if (o.hp > 0 && dz < 1.0 && dx < (o.radius + 0.85) && dy < (o.radius + 0.65)) {{
       endGame();
     }}
   }}
   obstacles = obstacles.filter(o => {{
-    if (o.z > 6) {{ scene.remove(o.mesh); return false; }}
+    if (o.hp <= 0 || o.z > 6) {{ scene.remove(o.mesh); return false; }}
+    return true;
+  }});
+
+  // player bolts: move forward, check obstacle hits
+  for (const b of playerBolts) {{
+    b.mesh.position.z -= 2.2 * dt;
+  }}
+  for (const b of playerBolts) {{
+    for (const o of obstacles) {{
+      if (o.hp <= 0) continue;
+      const bdx = Math.abs(b.mesh.position.x - o.mesh.position.x);
+      const bdy = Math.abs(b.mesh.position.y - o.mesh.position.y);
+      const bdz = Math.abs(b.mesh.position.z - o.mesh.position.z);
+      if (bdx < o.radius + 0.3 && bdy < o.radius + 0.3 && bdz < o.radius + 0.3) {{
+        o.hp = 0;
+        b.hit = true;
+        score += 40;
+      }}
+    }}
+  }}
+  playerBolts = playerBolts.filter(b => {{
+    if (b.hit || b.mesh.position.z < -72) {{ scene.remove(b.mesh); return false; }}
+    return true;
+  }});
+
+  // enemy bolts: move toward last-known player direction, check player hit
+  shootCooldown -= dt;
+  for (const b of enemyBolts) {{
+    b.mesh.position.x += b.vx * 0.55 * dt;
+    b.mesh.position.y += b.vy * 0.55 * dt;
+    b.mesh.position.z += b.vz * 0.55 * dt;
+    const edx = Math.abs(b.mesh.position.x - shipGroup.position.x);
+    const edy = Math.abs(b.mesh.position.y - shipGroup.position.y);
+    const edz = Math.abs(b.mesh.position.z - shipGroup.position.z);
+    if (edx < 0.8 && edy < 0.8 && edz < 0.8) {{
+      endGame();
+    }}
+  }}
+  enemyBolts = enemyBolts.filter(b => {{
+    if (b.mesh.position.z > 6 || b.mesh.position.z < -75) {{ scene.remove(b.mesh); return false; }}
     return true;
   }});
 
