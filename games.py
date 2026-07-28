@@ -225,6 +225,14 @@ game_html = f"""
     <span id="scoreLabel">Score: 0</span>
     <span id="bestLabel">Best: {st.session_state.scores['high_score']}</span>
   </div>
+  <div id="bossBarWrap" style="
+    position:absolute; top:44px; left:50%; transform:translateX(-50%);
+    width:60%; max-width:420px; display:none; z-index:4;">
+    <div style="text-align:center; color:#ff3355; font-size:12px; font-weight:600; text-shadow:0 2px 6px rgba(0,0,0,0.8); margin-bottom:3px;">⚠ BOSS</div>
+    <div style="background:rgba(255,255,255,0.15); border-radius:8px; height:12px; overflow:hidden; border:1px solid rgba(255,255,255,0.3);">
+      <div id="bossBarFill" style="background:linear-gradient(90deg,#ff3355,#ffe600); height:100%; width:100%; transition:width 0.2s;"></div>
+    </div>
+  </div>
   <button id="shootBtn" style="
     position:absolute; bottom:14px; right:14px; z-index:5;
     width:56px; height:56px; border-radius:50%; border:2px solid rgba(255,255,255,0.4);
@@ -234,7 +242,7 @@ game_html = f"""
     <h1>🪐 ORBITPARKOUR</h1>
     <p>Jump asteroids. Slide under debris. Shoot back. Don't crash.</p>
     <button id="startBtn">▶ Start Run</button>
-    <p class="hint">SPACE = Jump &nbsp;•&nbsp; ↑ / Top = Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer &nbsp;•&nbsp; F / 🔫 = Shoot</p>
+    <p class="hint">SPACE = Jump &nbsp;•&nbsp; ↑ / Top = Toggle Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer &nbsp;•&nbsp; F / 🔫 = Shoot</p>
   </div>
 </div>
 
@@ -258,6 +266,8 @@ const startBtn = document.getElementById('startBtn');
 const scoreLabel = document.getElementById('scoreLabel');
 const bestLabel = document.getElementById('bestLabel');
 const shootBtn = document.getElementById('shootBtn');
+const bossBarWrap = document.getElementById('bossBarWrap');
+const bossBarFill = document.getElementById('bossBarFill');
 
 const BASE_W = 900, BASE_H = 420;
 
@@ -466,11 +476,46 @@ function makeEnemyBolt() {{
   return m;
 }}
 
+function makeBoss() {{
+  const g = new THREE.Group();
+  const coreMat = new THREE.MeshStandardMaterial({{
+    color: 0x1a0510, roughness: 0.35, metalness: 0.8,
+    emissive: 0xff3355, emissiveIntensity: 0.35, flatShading: true
+  }});
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 1), coreMat);
+  g.add(core);
+
+  const eyeMat = new THREE.MeshBasicMaterial({{ color: 0xffe600 }});
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 12), eyeMat);
+  eye.position.set(0, 0.2, 2.3);
+  g.add(eye);
+  const eyeLight = new THREE.PointLight(0xffe600, 1.5, 8);
+  eyeLight.position.copy(eye.position);
+  g.add(eyeLight);
+
+  const spikeMat = new THREE.MeshStandardMaterial({{
+    color: 0xff3355, roughness: 0.5, metalness: 0.6, emissive: 0xff3355, emissiveIntensity: 0.3
+  }});
+  for (let i = 0; i < 6; i++) {{
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.6, 6), spikeMat);
+    const ang = (i / 6) * Math.PI * 2;
+    spike.position.set(Math.cos(ang) * 2.5, Math.sin(ang) * 2.5, 0);
+    spike.lookAt(spike.position.x * 2, spike.position.y * 2, 0);
+    spike.rotation.x += Math.PI / 2;
+    g.add(spike);
+  }}
+  g.userData.core = core;
+  g.userData.eye = eye;
+  return g;
+}}
+
 // ---------- game state ----------
 let player, obstacles, gameSpeed, score, running, gameOver, spawnTimer, elapsed, thrusting;
 let steerLeft = false, steerRight = false;
 let playerBolts = [], enemyBolts = [];
 let shootCooldown = 0;
+let boss = null, bossSpawned = false, bossActive = false;
+const BOSS_TRIGGER_SCORE = 1400;
 
 function resetGame() {{
   player = {{ x: 0, y: groundY, vy: 0, vx: 0, sliding: false, tilt: 0, roll: 0 }};
@@ -492,6 +537,10 @@ function resetGame() {{
   for (const b of (enemyBolts || [])) scene.remove(b.mesh);
   enemyBolts = [];
   shootCooldown = 0;
+  if (boss) {{ scene.remove(boss.mesh); boss = null; }}
+  bossSpawned = false;
+  bossActive = false;
+  bossBarWrap.style.display = 'none';
   shipGroup.position.set(0, groundY + 1.2, 0);
   shipGroup.rotation.set(0, Math.PI, 0);
   shipGroup.scale.set(1, 1, 1);
@@ -500,10 +549,9 @@ function resetGame() {{
 }}
 resetGame();
 
-function flyStart() {{ if (running && !player.sliding) thrusting = true; }}
-function flyEnd() {{ thrusting = false; }}
+function toggleFly() {{ if (running && !player.sliding) thrusting = !thrusting; }}
 function jumpImpulse() {{ if (running && !player.sliding) player.vy = 4.4; }}
-function slideStart() {{ if (running && player.y <= groundY + 1.2 + 0.05) player.sliding = true; }}
+function slideStart() {{ if (running && player.y <= groundY + 1.2 + 0.05) {{ player.sliding = true; thrusting = false; }} }}
 function slideEnd() {{ player.sliding = false; }}
 
 function leftStart() {{ steerLeft = true; }}
@@ -519,14 +567,13 @@ function requestShoot() {{
 
 document.addEventListener('keydown', (e) => {{
   if (e.code === 'Space') {{ e.preventDefault(); if (!e.repeat) jumpImpulse(); }}
-  if (e.code === 'ArrowUp') {{ e.preventDefault(); flyStart(); }}
+  if (e.code === 'ArrowUp') {{ e.preventDefault(); if (!e.repeat) toggleFly(); }}
   if (e.code === 'ArrowDown') {{ e.preventDefault(); slideStart(); }}
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') {{ e.preventDefault(); leftStart(); }}
   if (e.code === 'ArrowRight' || e.code === 'KeyD') {{ e.preventDefault(); rightStart(); }}
   if (e.code === 'KeyF') {{ e.preventDefault(); if (!e.repeat) requestShoot(); }}
 }});
 document.addEventListener('keyup', (e) => {{
-  if (e.code === 'ArrowUp') flyEnd();
   if (e.code === 'ArrowDown') slideEnd();
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') leftEnd();
   if (e.code === 'ArrowRight' || e.code === 'KeyD') rightEnd();
@@ -537,18 +584,18 @@ holder.addEventListener('touchstart', (e) => {{
   const touchX = e.touches[0].clientX - rect.left;
   if (touchX < rect.width / 3) leftStart();
   else if (touchX > rect.width * 2 / 3) rightStart();
-  else if (touchY < rect.height / 2) flyStart(); else slideStart();
+  else if (touchY < rect.height / 2) toggleFly(); else slideStart();
 }});
-holder.addEventListener('touchend', () => {{ flyEnd(); slideEnd(); leftEnd(); rightEnd(); }});
+holder.addEventListener('touchend', () => {{ slideEnd(); leftEnd(); rightEnd(); }});
 holder.addEventListener('mousedown', (e) => {{
   const rect = holder.getBoundingClientRect();
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
   if (clickX < rect.width / 3) leftStart();
   else if (clickX > rect.width * 2 / 3) rightStart();
-  else if (clickY < rect.height / 2) flyStart(); else slideStart();
+  else if (clickY < rect.height / 2) toggleFly(); else slideStart();
 }});
-holder.addEventListener('mouseup', () => {{ flyEnd(); slideEnd(); leftEnd(); rightEnd(); }});
+holder.addEventListener('mouseup', () => {{ slideEnd(); leftEnd(); rightEnd(); }});
 shootBtn.addEventListener('click', (e) => {{ e.stopPropagation(); requestShoot(); }});
 shootBtn.addEventListener('touchstart', (e) => {{ e.stopPropagation(); e.preventDefault(); requestShoot(); }});
 
@@ -604,6 +651,31 @@ function spawnEnemyBolt(fromObstacle) {{
   const dz = shipGroup.position.z - fromObstacle.mesh.position.z;
   const dist = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
   enemyBolts.push({{ mesh, vx: dx / dist, vy: dy / dist, vz: dz / dist }});
+}}
+
+function spawnBossBoltFrom(originVec, spreadX) {{
+  const mesh = makeEnemyBolt();
+  mesh.position.copy(originVec);
+  scene.add(mesh);
+  const dx = (shipGroup.position.x + spreadX) - originVec.x;
+  const dy = shipGroup.position.y - originVec.y;
+  const dz = shipGroup.position.z - originVec.z;
+  const dist = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+  enemyBolts.push({{ mesh, vx: dx / dist, vy: dy / dist, vz: dz / dist }});
+}}
+
+function spawnBoss() {{
+  bossSpawned = true;
+  bossActive = true;
+  // clear the trench of normal obstacles for a clean arena
+  for (const o of obstacles) scene.remove(o.mesh);
+  obstacles = [];
+  const mesh = makeBoss();
+  mesh.position.set(0, groundY + 4.5, -45);
+  scene.add(mesh);
+  boss = {{ mesh, hp: 10, maxHp: 10, z: -45, phase: Math.random() * Math.PI * 2, fireTimer: 90 }};
+  bossBarWrap.style.display = 'block';
+  bossBarFill.style.width = '100%';
 }}
 
 function spawnParticle() {{
@@ -702,11 +774,18 @@ function update(dt) {{
     if (particles[i].life <= 0) {{ scene.remove(particles[i].sprite); particles.splice(i, 1); }}
   }}
 
-  // spawn
-  spawnTimer -= dt;
-  if (spawnTimer <= 0) {{
-    spawnObstacle();
-    spawnTimer = Math.max(22, 40 - elapsed * 0.008) + Math.random() * 14;
+  // boss trigger
+  if (!bossSpawned && score >= BOSS_TRIGGER_SCORE) {{
+    spawnBoss();
+  }}
+
+  // spawn (paused during boss fight)
+  if (!bossActive) {{
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {{
+      spawnObstacle();
+      spawnTimer = Math.max(22, 40 - elapsed * 0.008) + Math.random() * 14;
+    }}
   }}
 
   // move obstacles toward camera, check collision
@@ -776,6 +855,58 @@ function update(dt) {{
     if (b.mesh.position.z > 6 || b.mesh.position.z < -75) {{ scene.remove(b.mesh); return false; }}
     return true;
   }});
+
+  // boss behavior
+  if (boss) {{
+    boss.phase += 0.02 * dt;
+    const targetBossZ = -32;
+    boss.z += (targetBossZ - boss.z) * Math.min(1, 0.02 * dt);
+    boss.mesh.position.z = boss.z;
+    boss.mesh.position.x = Math.sin(boss.phase) * 6.5;
+    boss.mesh.position.y = groundY + 4.5 + Math.sin(boss.phase * 0.7) * 1.2;
+    boss.mesh.rotation.y += 0.006 * dt;
+    boss.mesh.rotation.x += 0.003 * dt;
+    const pulse = 1 + Math.sin(boss.phase * 3) * 0.04;
+    boss.mesh.userData.eye.scale.set(pulse, pulse, pulse);
+
+    boss.fireTimer -= dt;
+    if (boss.fireTimer <= 0 && boss.z > -50) {{
+      spawnBossBoltFrom(boss.mesh.position, -2.2);
+      spawnBossBoltFrom(boss.mesh.position, 0);
+      spawnBossBoltFrom(boss.mesh.position, 2.2);
+      boss.fireTimer = 95 + Math.random() * 30;
+    }}
+
+    // player bolts vs boss
+    for (const b of playerBolts) {{
+      const bx = Math.abs(b.mesh.position.x - boss.mesh.position.x);
+      const by = Math.abs(b.mesh.position.y - boss.mesh.position.y);
+      const bz = Math.abs(b.mesh.position.z - boss.mesh.position.z);
+      if (bx < 3 && by < 3 && bz < 3) {{
+        b.hit = true;
+        boss.hp -= 1;
+        bossBarFill.style.width = Math.max(0, (boss.hp / boss.maxHp) * 100) + '%';
+        if (boss.hp <= 0) {{
+          score += 1500;
+          scene.remove(boss.mesh);
+          boss = null;
+          bossActive = false;
+          bossBarWrap.style.display = 'none';
+          spawnTimer = 60;
+        }}
+      }}
+    }}
+
+    // boss direct collision with ship
+    if (boss) {{
+      const cdx = Math.abs(boss.mesh.position.x - shipGroup.position.x);
+      const cdy = Math.abs(boss.mesh.position.y - shipGroup.position.y);
+      const cdz = Math.abs(boss.mesh.position.z - shipGroup.position.z);
+      if (cdx < 3.4 && cdy < 3.4 && cdz < 3.4) {{
+        endGame();
+      }}
+    }}
+  }}
 
   // scroll ground segments
   for (const seg of groundSegs) {{
