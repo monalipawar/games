@@ -265,9 +265,9 @@ const BASE_W = 900, BASE_H = 420;
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(hexToInt(COLORS.bg1), 20, 95);
 
-const camera = new THREE.PerspectiveCamera(68, BASE_W / BASE_H, 0.1, 200);
-camera.position.set(0, 5.8, 13.5);
-camera.lookAt(0, 3, -10);
+const camera = new THREE.PerspectiveCamera(75, BASE_W / BASE_H, 0.1, 200);
+camera.position.set(0, 3.6, 8.5);
+camera.lookAt(0, 2.6, -14);
 
 const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
 renderer.setSize(BASE_W, BASE_H);
@@ -304,6 +304,8 @@ const ceilingY = 9;
 const groundSegs = [];
 const segLen = 20;
 const segCount = 6;
+const trenchHalfWidth = 11.5;
+const trenchWallH = 13;
 for (let i = 0; i < segCount; i++) {{
   const g = new THREE.Group();
   const planeGeo = new THREE.PlaneGeometry(34, segLen);
@@ -318,6 +320,36 @@ for (let i = 0; i < segCount; i++) {{
   gridHelper.material.transparent = true;
   gridHelper.material.opacity = 0.35;
   g.add(gridHelper);
+
+  // trench side walls
+  const wallMat = new THREE.MeshStandardMaterial({{
+    color: hexToInt(COLORS.bg2), roughness: 0.6, metalness: 0.4,
+    emissive: hexToInt(COLORS.secondary), emissiveIntensity: 0.08
+  }});
+  const wallGeo = new THREE.PlaneGeometry(segLen, trenchWallH);
+  const wallL = new THREE.Mesh(wallGeo, wallMat);
+  wallL.position.set(-trenchHalfWidth, trenchWallH / 2, 0);
+  wallL.rotation.y = Math.PI / 2;
+  g.add(wallL);
+  const wallR = new THREE.Mesh(wallGeo, wallMat.clone());
+  wallR.position.set(trenchHalfWidth, trenchWallH / 2, 0);
+  wallR.rotation.y = -Math.PI / 2;
+  g.add(wallR);
+
+  // horizontal trim lines on walls (greebled trench detailing)
+  for (let k = 1; k <= 3; k++) {{
+    const trimGeo = new THREE.PlaneGeometry(segLen, 0.12);
+    const trimMat = new THREE.MeshBasicMaterial({{ color: hexToInt(COLORS.secondary), transparent: true, opacity: 0.4 }});
+    const trimL = new THREE.Mesh(trimGeo, trimMat);
+    trimL.position.set(-trenchHalfWidth + 0.02, k * (trenchWallH / 4), 0);
+    trimL.rotation.y = Math.PI / 2;
+    g.add(trimL);
+    const trimR = trimL.clone();
+    trimR.position.x = trenchHalfWidth - 0.02;
+    trimR.rotation.y = -Math.PI / 2;
+    g.add(trimR);
+  }}
+
   g.position.set(0, groundY, -i * segLen);
   scene.add(g);
   groundSegs.push(g);
@@ -464,6 +496,7 @@ function resetGame() {{
   shipGroup.rotation.set(0, Math.PI, 0);
   shipGroup.scale.set(1, 1, 1);
   camera.position.x = 0;
+  camera.up.set(0, 1, 0);
 }}
 resetGame();
 
@@ -610,8 +643,8 @@ function update(dt) {{
   if (player.x < -laneLimit) {{ player.x = -laneLimit; player.vx = 0; }}
   if (player.x > laneLimit) {{ player.x = laneLimit; player.vx = 0; }}
 
-  const targetRoll = Math.max(-0.5, Math.min(0.5, -player.vx * 0.06));
-  player.roll += (targetRoll - player.roll) * Math.min(1, 0.25 * dt);
+  const targetRoll = Math.max(-0.75, Math.min(0.75, -player.vx * 0.09));
+  player.roll += (targetRoll - player.roll) * Math.min(1, 0.3 * dt);
 
   if (!player.sliding) {{
     const climbTarget = 7.2;
@@ -639,9 +672,10 @@ function update(dt) {{
   const scaleY = player.sliding ? 0.55 : 1;
   shipGroup.scale.y += (scaleY - shipGroup.scale.y) * Math.min(1, 0.4 * dt);
 
-  const camTargetX = player.x * 0.75;
-  camera.position.x += (camTargetX - camera.position.x) * Math.min(1, 0.15 * dt);
-  camera.lookAt(camTargetX, 3, -10);
+  const camTargetX = player.x * 0.55;
+  camera.position.x += (camTargetX - camera.position.x) * Math.min(1, 0.18 * dt);
+  camera.up.set(Math.sin(player.roll * 0.35), Math.cos(player.roll * 0.35), 0);
+  camera.lookAt(camTargetX * 0.7, 2.6, -14);
 
   engineGlow.intensity = thrusting ? 1.4 : 0;
   flame.visible = thrusting;
