@@ -643,7 +643,7 @@ function update(dt) {{
   if (player.x < -laneLimit) {{ player.x = -laneLimit; player.vx = 0; }}
   if (player.x > laneLimit) {{ player.x = laneLimit; player.vx = 0; }}
 
-  const targetRoll = Math.max(-0.75, Math.min(0.75, -player.vx * 0.09));
+  const targetRoll = Math.max(-0.35, Math.min(0.35, -player.vx * 0.045));
   player.roll += (targetRoll - player.roll) * Math.min(1, 0.3 * dt);
 
   if (!player.sliding) {{
@@ -674,7 +674,7 @@ function update(dt) {{
 
   const camTargetX = player.x * 0.55;
   camera.position.x += (camTargetX - camera.position.x) * Math.min(1, 0.18 * dt);
-  camera.up.set(Math.sin(player.roll * 0.35), Math.cos(player.roll * 0.35), 0);
+  camera.up.set(Math.sin(player.roll * 0.15), Math.cos(player.roll * 0.15), 0);
   camera.lookAt(camTargetX * 0.7, 2.6, -14);
 
   engineGlow.intensity = thrusting ? 1.4 : 0;
