@@ -228,7 +228,7 @@ game_html = f"""
   <div id="bossBarWrap" style="
     position:absolute; top:44px; left:50%; transform:translateX(-50%);
     width:60%; max-width:420px; display:none; z-index:4;">
-    <div style="text-align:center; color:#ff3355; font-size:12px; font-weight:600; text-shadow:0 2px 6px rgba(0,0,0,0.8); margin-bottom:3px;">⚠ BOSS</div>
+    <div id="bossLabel" style="text-align:center; color:#ff3355; font-size:12px; font-weight:600; text-shadow:0 2px 6px rgba(0,0,0,0.8); margin-bottom:3px;">⚠ BOSS</div>
     <div style="background:rgba(255,255,255,0.15); border-radius:8px; height:12px; overflow:hidden; border:1px solid rgba(255,255,255,0.3);">
       <div id="bossBarFill" style="background:linear-gradient(90deg,#ff3355,#ffe600); height:100%; width:100%; transition:width 0.2s;"></div>
     </div>
@@ -268,6 +268,7 @@ const bestLabel = document.getElementById('bestLabel');
 const shootBtn = document.getElementById('shootBtn');
 const bossBarWrap = document.getElementById('bossBarWrap');
 const bossBarFill = document.getElementById('bossBarFill');
+const bossLabel = document.getElementById('bossLabel');
 
 const BASE_W = 900, BASE_H = 420;
 
@@ -476,7 +477,13 @@ function makeEnemyBolt() {{
   return m;
 }}
 
-function makeBoss() {{
+function makeBoss(type) {{
+  if (type === 'sentinel') return makeSentinelBoss();
+  if (type === 'swarm') return makeSwarmBoss();
+  return makeSpikerBoss();
+}}
+
+function makeSpikerBoss() {{
   const g = new THREE.Group();
   const coreMat = new THREE.MeshStandardMaterial({{
     color: 0x1a0510, roughness: 0.35, metalness: 0.8,
@@ -509,6 +516,71 @@ function makeBoss() {{
   return g;
 }}
 
+function makeSentinelBoss() {{
+  const g = new THREE.Group();
+  const coreMat = new THREE.MeshStandardMaterial({{
+    color: 0x101a2a, roughness: 0.3, metalness: 0.9,
+    emissive: 0x00c8ff, emissiveIntensity: 0.3, flatShading: true
+  }});
+  const core = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.6, 3.6), coreMat);
+  g.add(core);
+
+  const eyeMat = new THREE.MeshBasicMaterial({{ color: 0x00e5ff }});
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 12), eyeMat);
+  eye.position.set(0, 0, 2.1);
+  g.add(eye);
+  const eyeLight = new THREE.PointLight(0x00e5ff, 1.8, 9);
+  eyeLight.position.copy(eye.position);
+  g.add(eyeLight);
+
+  // armor plates on corners
+  const plateMat = new THREE.MeshStandardMaterial({{
+    color: 0x00c8ff, roughness: 0.4, metalness: 0.7, emissive: 0x00c8ff, emissiveIntensity: 0.25
+  }});
+  const corners = [[-1,-1,-1],[1,-1,-1],[-1,1,-1],[1,1,-1],[-1,-1,1],[1,-1,1],[-1,1,1],[1,1,1]];
+  for (const c of corners) {{
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), plateMat);
+    plate.position.set(c[0] * 2, c[1] * 2, c[2] * 2);
+    g.add(plate);
+  }}
+  g.userData.core = core;
+  g.userData.eye = eye;
+  return g;
+}}
+
+function makeSwarmBoss() {{
+  const g = new THREE.Group();
+  const coreMat = new THREE.MeshStandardMaterial({{
+    color: 0x1a1005, roughness: 0.35, metalness: 0.75,
+    emissive: 0xffaa00, emissiveIntensity: 0.3, flatShading: true
+  }});
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.9, 0), coreMat);
+  g.add(core);
+
+  const eyeMat = new THREE.MeshBasicMaterial({{ color: 0xffe600 }});
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 12), eyeMat);
+  eye.position.set(0, 0.1, 1.8);
+  g.add(eye);
+  const eyeLight = new THREE.PointLight(0xffe600, 1.3, 7);
+  eyeLight.position.copy(eye.position);
+  g.add(eyeLight);
+
+  // orbiting drones
+  const droneMat = new THREE.MeshStandardMaterial({{
+    color: 0xffaa00, roughness: 0.4, metalness: 0.6, emissive: 0xffaa00, emissiveIntensity: 0.35
+  }});
+  const drones = [];
+  for (let i = 0; i < 3; i++) {{
+    const drone = new THREE.Mesh(new THREE.TetrahedronGeometry(0.55, 0), droneMat);
+    g.add(drone);
+    drones.push(drone);
+  }}
+  g.userData.core = core;
+  g.userData.eye = eye;
+  g.userData.drones = drones;
+  return g;
+}}
+
 // ---------- game state ----------
 let player, obstacles, gameSpeed, score, running, gameOver, spawnTimer, elapsed, thrusting;
 let steerLeft = false, steerRight = false;
@@ -516,7 +588,10 @@ let downHeld = false;
 let playerBolts = [], enemyBolts = [];
 let shootCooldown = 0;
 let boss = null, bossSpawned = false, bossActive = false;
-const BOSS_TRIGGER_SCORE = 1400;
+let nextBossScore = 2000;
+const BOSS_SCORE_INTERVAL = 2000;
+const BOSS_TYPES = ['spiker', 'sentinel', 'swarm'];
+let bossCycleIndex = 0;
 
 function resetGame() {{
   player = {{ x: 0, y: groundY, vy: 0, vx: 0, sliding: false, tilt: 0, roll: 0 }};
@@ -543,6 +618,8 @@ function resetGame() {{
   bossSpawned = false;
   bossActive = false;
   bossBarWrap.style.display = 'none';
+  nextBossScore = BOSS_SCORE_INTERVAL;
+  bossCycleIndex = 0;
   shipGroup.position.set(0, groundY + 1.2, 0);
   shipGroup.rotation.set(0, Math.PI, 0);
   shipGroup.scale.set(1, 1, 1);
@@ -674,12 +751,24 @@ function spawnBoss() {{
   // clear the trench of normal obstacles for a clean arena
   for (const o of obstacles) scene.remove(o.mesh);
   obstacles = [];
-  const mesh = makeBoss();
+  const type = BOSS_TYPES[bossCycleIndex % BOSS_TYPES.length];
+  bossCycleIndex++;
+  const mesh = makeBoss(type);
   mesh.position.set(0, groundY + 4.5, -45);
   scene.add(mesh);
-  boss = {{ mesh, hp: 10, maxHp: 10, z: -45, phase: Math.random() * Math.PI * 2, fireTimer: 90 }};
+  const stats = {{
+    spiker:   {{ hp: 10, fireTimer: 90 }},
+    sentinel: {{ hp: 16, fireTimer: 55 }},
+    swarm:    {{ hp: 13, fireTimer: 70 }}
+  }}[type];
+  boss = {{
+    mesh, type, hp: stats.hp, maxHp: stats.hp, z: -45,
+    phase: Math.random() * Math.PI * 2, fireTimer: stats.fireTimer
+  }};
   bossBarWrap.style.display = 'block';
   bossBarFill.style.width = '100%';
+  const names = {{ spiker: '⚠ SPIKER', sentinel: '⚠ SENTINEL', swarm: '⚠ SWARM QUEEN' }};
+  bossLabel.textContent = names[type] || '⚠ BOSS';
 }}
 
 function spawnParticle() {{
@@ -788,7 +877,7 @@ function update(dt) {{
   }}
 
   // boss trigger
-  if (!bossSpawned && score >= BOSS_TRIGGER_SCORE) {{
+  if (!bossActive && score >= nextBossScore) {{
     spawnBoss();
   }}
 
@@ -875,19 +964,38 @@ function update(dt) {{
     const targetBossZ = -32;
     boss.z += (targetBossZ - boss.z) * Math.min(1, 0.02 * dt);
     boss.mesh.position.z = boss.z;
-    boss.mesh.position.x = Math.sin(boss.phase) * 6.5;
+    const swayAmp = boss.type === 'sentinel' ? 2.5 : 6.5;
+    boss.mesh.position.x = Math.sin(boss.phase) * swayAmp;
     boss.mesh.position.y = groundY + 4.5 + Math.sin(boss.phase * 0.7) * 1.2;
     boss.mesh.rotation.y += 0.006 * dt;
     boss.mesh.rotation.x += 0.003 * dt;
     const pulse = 1 + Math.sin(boss.phase * 3) * 0.04;
     boss.mesh.userData.eye.scale.set(pulse, pulse, pulse);
+    if (boss.type === 'swarm' && boss.mesh.userData.drones) {{
+      const drones = boss.mesh.userData.drones;
+      for (let i = 0; i < drones.length; i++) {{
+        const a = boss.phase * 1.4 + (i / drones.length) * Math.PI * 2;
+        drones[i].position.set(Math.cos(a) * 2.9, Math.sin(a) * 2.9, Math.sin(a * 2) * 0.6);
+        drones[i].rotation.x += 0.05 * dt;
+        drones[i].rotation.y += 0.05 * dt;
+      }}
+    }}
 
     boss.fireTimer -= dt;
     if (boss.fireTimer <= 0 && boss.z > -50) {{
-      spawnBossBoltFrom(boss.mesh.position, -2.2);
-      spawnBossBoltFrom(boss.mesh.position, 0);
-      spawnBossBoltFrom(boss.mesh.position, 2.2);
-      boss.fireTimer = 95 + Math.random() * 30;
+      if (boss.type === 'sentinel') {{
+        spawnBossBoltFrom(boss.mesh.position, 0);
+        boss.fireTimer = 45 + Math.random() * 20;
+      }} else if (boss.type === 'swarm') {{
+        spawnBossBoltFrom(boss.mesh.position, -3.2);
+        spawnBossBoltFrom(boss.mesh.position, 3.2);
+        boss.fireTimer = 60 + Math.random() * 25;
+      }} else {{
+        spawnBossBoltFrom(boss.mesh.position, -2.2);
+        spawnBossBoltFrom(boss.mesh.position, 0);
+        spawnBossBoltFrom(boss.mesh.position, 2.2);
+        boss.fireTimer = 95 + Math.random() * 30;
+      }}
     }}
 
     // player bolts vs boss
@@ -905,6 +1013,7 @@ function update(dt) {{
           boss = null;
           bossActive = false;
           bossBarWrap.style.display = 'none';
+          nextBossScore = score + BOSS_SCORE_INTERVAL;
           spawnTimer = 60;
         }}
       }}
