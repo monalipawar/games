@@ -512,6 +512,7 @@ function makeBoss() {{
 // ---------- game state ----------
 let player, obstacles, gameSpeed, score, running, gameOver, spawnTimer, elapsed, thrusting;
 let steerLeft = false, steerRight = false;
+let downHeld = false;
 let playerBolts = [], enemyBolts = [];
 let shootCooldown = 0;
 let boss = null, bossSpawned = false, bossActive = false;
@@ -532,6 +533,7 @@ function resetGame() {{
   thrusting = false;
   steerLeft = false;
   steerRight = false;
+  downHeld = false;
   for (const b of (playerBolts || [])) scene.remove(b.mesh);
   playerBolts = [];
   for (const b of (enemyBolts || [])) scene.remove(b.mesh);
@@ -549,11 +551,11 @@ function resetGame() {{
 }}
 resetGame();
 
-function flyStart() {{ if (running && !player.sliding) thrusting = true; }}
+function flyStart() {{ if (running && !downHeld) thrusting = true; }}
 function flyEnd() {{ thrusting = false; }}
-function jumpImpulse() {{ if (running && !player.sliding) player.vy = 4.4; }}
-function slideStart() {{ if (running && player.y <= groundY + 1.2 + 0.05) {{ player.sliding = true; thrusting = false; }} }}
-function slideEnd() {{ player.sliding = false; }}
+function jumpImpulse() {{ if (running && !downHeld) player.vy = 4.4; }}
+function slideStart() {{ if (running) {{ downHeld = true; thrusting = false; }} }}
+function slideEnd() {{ downHeld = false; }}
 
 function leftStart() {{ steerLeft = true; }}
 function leftEnd() {{ steerLeft = false; }}
@@ -720,20 +722,29 @@ function update(dt) {{
   const targetRoll = Math.max(-0.35, Math.min(0.35, -player.vx * 0.045));
   player.roll += (targetRoll - player.roll) * Math.min(1, 0.3 * dt);
 
-  if (!player.sliding) {{
+  // determine sliding (crouch at ground) vs descending (falling toward ground while airborne)
+  const atGround = player.y <= shipBaseY + 0.08;
+  player.sliding = downHeld && atGround;
+  const descending = downHeld && !atGround;
+  if (downHeld) thrusting = false;
+
+  if (player.sliding) {{
+    player.y = shipBaseY;
+    player.vy = 0;
+  }} else {{
     const climbTarget = 7.2;
+    const descendTarget = -7.2;
     const holdTarget = 0;
-    const targetVy = thrusting ? climbTarget : holdTarget;
-    const approachRate = thrusting ? 0.10 : 0.25; // releasing settles quickly to a stop, not a fall
+    let targetVy = holdTarget;
+    let approachRate = 0.25; // releasing settles quickly to a stop, holds altitude
+    if (descending) {{ targetVy = descendTarget; approachRate = 0.10; }}
+    else if (thrusting) {{ targetVy = climbTarget; approachRate = 0.10; }}
     player.vy += (targetVy - player.vy) * Math.min(1, approachRate * dt);
     player.y += player.vy * dt * 0.09;
     if (player.y < shipBaseY) {{ player.y = shipBaseY; player.vy = 0; }}
     if (player.y > shipTopY) {{ player.y = shipTopY; player.vy = 0; }}
 
     if (running) spawnParticle();
-  }} else {{
-    player.y = shipBaseY;
-    player.vy = 0;
   }}
 
   shipGroup.position.y = player.y;
