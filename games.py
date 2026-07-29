@@ -241,6 +241,23 @@ game_html = f"""
   <div id="overlay">
     <h1>🪐 ORBITPARKOUR</h1>
     <p>Jump asteroids. Slide under debris. Shoot back. Don't crash.</p>
+    <div id="setupRow" style="display:flex; gap:14px; margin-top:10px; align-items:center;">
+      <label style="font-size:13px; opacity:0.8;">Difficulty
+        <select id="difficultySelect" style="
+          display:block; margin-top:4px; padding:6px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.3);
+          background:rgba(255,255,255,0.08); color:white; font-family:'Outfit',sans-serif; font-size:14px;">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
+      <label style="font-size:13px; opacity:0.8;">Level
+        <select id="levelSelect" style="
+          display:block; margin-top:4px; padding:6px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.3);
+          background:rgba(255,255,255,0.08); color:white; font-family:'Outfit',sans-serif; font-size:14px;">
+        </select>
+      </label>
+    </div>
     <button id="startBtn">▶ Start Run</button>
     <p class="hint">SPACE = Jump &nbsp;•&nbsp; Hold ↑ / Top = Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer &nbsp;•&nbsp; F / 🔫 = Shoot</p>
   </div>
@@ -269,6 +286,19 @@ const shootBtn = document.getElementById('shootBtn');
 const bossBarWrap = document.getElementById('bossBarWrap');
 const bossBarFill = document.getElementById('bossBarFill');
 const bossLabel = document.getElementById('bossLabel');
+const difficultySelect = document.getElementById('difficultySelect');
+const levelSelect = document.getElementById('levelSelect');
+for (let lv = 1; lv <= 10; lv++) {{
+  const opt = document.createElement('option');
+  opt.value = lv;
+  opt.textContent = 'Level ' + lv;
+  if (lv === 1) opt.selected = true;
+  levelSelect.appendChild(opt);
+}}
+let difficultyMult = 1.0;
+let levelMult = 1.0;
+let selectedLevel = 1;
+let selectedDifficulty = 'medium';
 
 const BASE_W = 900, BASE_H = 420;
 
@@ -594,14 +624,20 @@ const BOSS_TYPES = ['spiker', 'sentinel', 'swarm'];
 let bossCycleIndex = 0;
 
 function resetGame() {{
+  selectedDifficulty = difficultySelect.value;
+  selectedLevel = parseInt(levelSelect.value, 10) || 1;
+  const diffTable = {{ easy: 0.75, medium: 1.0, hard: 1.35 }};
+  difficultyMult = diffTable[selectedDifficulty] || 1.0;
+  levelMult = 1 + (selectedLevel - 1) * 0.08;
+
   player = {{ x: 0, y: groundY, vy: 0, vx: 0, sliding: false, tilt: 0, roll: 0 }};
   for (const o of obstacles || []) scene.remove(o.mesh);
   obstacles = [];
   for (const p of particles) scene.remove(p.sprite);
   particles = [];
-  gameSpeed = 3.6;
+  gameSpeed = 3.6 * difficultyMult * levelMult;
   score = 0;
-  spawnTimer = 30;
+  spawnTimer = Math.max(10, 30 / (difficultyMult * levelMult));
   elapsed = 0;
   running = false;
   gameOver = false;
@@ -761,9 +797,11 @@ function spawnBoss() {{
     sentinel: {{ hp: 16, fireTimer: 55 }},
     swarm:    {{ hp: 13, fireTimer: 70 }}
   }}[type];
+  const bossHp = Math.round(stats.hp * (0.7 + 0.3 * difficultyMult) * (0.85 + 0.15 * levelMult));
+  const bossFire = Math.max(24, stats.fireTimer / (difficultyMult * (0.8 + 0.2 * levelMult)));
   boss = {{
-    mesh, type, hp: stats.hp, maxHp: stats.hp, z: -45,
-    phase: Math.random() * Math.PI * 2, fireTimer: stats.fireTimer
+    mesh, type, hp: bossHp, maxHp: bossHp, z: -45,
+    phase: Math.random() * Math.PI * 2, fireTimer: bossFire
   }};
   bossBarWrap.style.display = 'block';
   bossBarFill.style.width = '100%';
@@ -784,7 +822,7 @@ function spawnParticle() {{
 function update(dt) {{
   if (!running) return;
   elapsed++;
-  gameSpeed = Math.min(7.5, 3.6 + elapsed * 0.0008);
+  gameSpeed = Math.min(7.5 * difficultyMult * levelMult, (3.6 + elapsed * 0.0008) * difficultyMult * levelMult);
   score += Math.floor(gameSpeed / 3);
   scoreLabel.textContent = 'Score: ' + score;
 
@@ -886,7 +924,7 @@ function update(dt) {{
     spawnTimer -= dt;
     if (spawnTimer <= 0) {{
       spawnObstacle();
-      spawnTimer = Math.max(22, 40 - elapsed * 0.008) + Math.random() * 14;
+      spawnTimer = Math.max(10, (40 - elapsed * 0.008) / (difficultyMult * levelMult)) + Math.random() * 14 / (difficultyMult * levelMult);
     }}
   }}
 
