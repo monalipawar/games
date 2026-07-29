@@ -242,7 +242,7 @@ game_html = f"""
     <h1>🪐 ORBITPARKOUR</h1>
     <p>Jump asteroids. Slide under debris. Shoot back. Don't crash.</p>
     <button id="startBtn">▶ Start Run</button>
-    <p class="hint">SPACE = Jump &nbsp;•&nbsp; ↑ / Top = Toggle Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer &nbsp;•&nbsp; F / 🔫 = Shoot</p>
+    <p class="hint">SPACE = Jump &nbsp;•&nbsp; Hold ↑ / Top = Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer &nbsp;•&nbsp; F / 🔫 = Shoot</p>
   </div>
 </div>
 
@@ -549,7 +549,8 @@ function resetGame() {{
 }}
 resetGame();
 
-function toggleFly() {{ if (running && !player.sliding) thrusting = !thrusting; }}
+function flyStart() {{ if (running && !player.sliding) thrusting = true; }}
+function flyEnd() {{ thrusting = false; }}
 function jumpImpulse() {{ if (running && !player.sliding) player.vy = 4.4; }}
 function slideStart() {{ if (running && player.y <= groundY + 1.2 + 0.05) {{ player.sliding = true; thrusting = false; }} }}
 function slideEnd() {{ player.sliding = false; }}
@@ -567,13 +568,14 @@ function requestShoot() {{
 
 document.addEventListener('keydown', (e) => {{
   if (e.code === 'Space') {{ e.preventDefault(); if (!e.repeat) jumpImpulse(); }}
-  if (e.code === 'ArrowUp') {{ e.preventDefault(); if (!e.repeat) toggleFly(); }}
+  if (e.code === 'ArrowUp') {{ e.preventDefault(); flyStart(); }}
   if (e.code === 'ArrowDown') {{ e.preventDefault(); slideStart(); }}
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') {{ e.preventDefault(); leftStart(); }}
   if (e.code === 'ArrowRight' || e.code === 'KeyD') {{ e.preventDefault(); rightStart(); }}
   if (e.code === 'KeyF') {{ e.preventDefault(); if (!e.repeat) requestShoot(); }}
 }});
 document.addEventListener('keyup', (e) => {{
+  if (e.code === 'ArrowUp') flyEnd();
   if (e.code === 'ArrowDown') slideEnd();
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') leftEnd();
   if (e.code === 'ArrowRight' || e.code === 'KeyD') rightEnd();
@@ -584,18 +586,18 @@ holder.addEventListener('touchstart', (e) => {{
   const touchX = e.touches[0].clientX - rect.left;
   if (touchX < rect.width / 3) leftStart();
   else if (touchX > rect.width * 2 / 3) rightStart();
-  else if (touchY < rect.height / 2) toggleFly(); else slideStart();
+  else if (touchY < rect.height / 2) flyStart(); else slideStart();
 }});
-holder.addEventListener('touchend', () => {{ slideEnd(); leftEnd(); rightEnd(); }});
+holder.addEventListener('touchend', () => {{ flyEnd(); slideEnd(); leftEnd(); rightEnd(); }});
 holder.addEventListener('mousedown', (e) => {{
   const rect = holder.getBoundingClientRect();
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
   if (clickX < rect.width / 3) leftStart();
   else if (clickX > rect.width * 2 / 3) rightStart();
-  else if (clickY < rect.height / 2) toggleFly(); else slideStart();
+  else if (clickY < rect.height / 2) flyStart(); else slideStart();
 }});
-holder.addEventListener('mouseup', () => {{ slideEnd(); leftEnd(); rightEnd(); }});
+holder.addEventListener('mouseup', () => {{ flyEnd(); slideEnd(); leftEnd(); rightEnd(); }});
 shootBtn.addEventListener('click', (e) => {{ e.stopPropagation(); requestShoot(); }});
 shootBtn.addEventListener('touchstart', (e) => {{ e.stopPropagation(); e.preventDefault(); requestShoot(); }});
 
@@ -720,9 +722,9 @@ function update(dt) {{
 
   if (!player.sliding) {{
     const climbTarget = 7.2;
-    const fallTarget = -12.5;
-    const targetVy = thrusting ? climbTarget : fallTarget;
-    const approachRate = thrusting ? 0.10 : 0.22; // falling pulls in faster so you don't just hang in the air
+    const holdTarget = 0;
+    const targetVy = thrusting ? climbTarget : holdTarget;
+    const approachRate = thrusting ? 0.10 : 0.25; // releasing settles quickly to a stop, not a fall
     player.vy += (targetVy - player.vy) * Math.min(1, approachRate * dt);
     player.y += player.vy * dt * 0.09;
     if (player.y < shipBaseY) {{ player.y = shipBaseY; player.vy = 0; }}
