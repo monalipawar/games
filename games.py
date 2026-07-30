@@ -637,7 +637,7 @@ function resetGame() {{
   particles = [];
   gameSpeed = 3.6 * difficultyMult * levelMult;
   score = 0;
-  spawnTimer = Math.max(10, 30 / (difficultyMult * levelMult));
+  spawnTimer = Math.max(6, 18 / (difficultyMult * levelMult));
   elapsed = 0;
   running = false;
   gameOver = false;
@@ -924,7 +924,7 @@ function update(dt) {{
     spawnTimer -= dt;
     if (spawnTimer <= 0) {{
       spawnObstacle();
-      spawnTimer = Math.max(10, (40 - elapsed * 0.008) / (difficultyMult * levelMult)) + Math.random() * 14 / (difficultyMult * levelMult);
+      spawnTimer = Math.max(6, (24 - elapsed * 0.006) / (difficultyMult * levelMult)) + Math.random() * 8 / (difficultyMult * levelMult);
     }}
   }}
 
