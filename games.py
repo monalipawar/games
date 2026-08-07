@@ -1272,3 +1272,43 @@ with col2:
             st.success("🏆 New high score!")
         save_scores(st.session_state.scores)
         st.rerun()
+
+st.markdown("""
+<script>
+// This script overrides your existing shooting logic after the game loads
+window.addEventListener('load', () => {
+    // Override requestShoot
+    window.requestShoot = function() {
+        if (running && shootCooldown <= 0) {
+            let target = null;
+            let minDist = 60;
+            for (const o of obstacles) {
+                if (o.hp > 0 && o.z < -2 && o.z > -65) {
+                    const d = Math.abs(o.z - shipGroup.position.z);
+                    if (d < minDist) { minDist = d; target = o; }
+                }
+            }
+            spawnPlayerBolt(target);
+            shootCooldown = 14;
+        }
+    };
+
+    // Override spawnPlayerBolt
+    window.spawnPlayerBolt = function(target) {
+        const mesh = makePlayerBolt();
+        mesh.position.copy(shipGroup.position);
+        mesh.position.z -= 1.4;
+        let vel = { x: 0, y: 0, vz: -5 };
+        if (target) {
+            const dx = target.mesh.position.x - mesh.position.x;
+            const dy = target.mesh.position.y - mesh.position.y;
+            const dz = target.mesh.position.z - mesh.position.z;
+            const mag = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+            vel = { x: (dx/mag)*6, y: (dy/mag)*6, vz: (dz/mag)*6 };
+        }
+        scene.add(mesh);
+        playerBolts.push({ mesh, vx: vel.x, vy: vel.y, vz: vel.vz });
+    };
+});
+</script>
+""", unsafe_allow_html=True)
