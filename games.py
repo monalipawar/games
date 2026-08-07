@@ -174,6 +174,17 @@ game_html = f"""
     text-shadow: 0 2px 8px rgba(0,0,0,0.8);
     pointer-events: none;
   }}
+  #targetLabel {{
+    position: absolute;
+    top: 14px; left: 50%; transform: translateX(-50%);
+    color: #ffe600;
+    font-weight: 700;
+    font-size: 14px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+    display: none;
+    pointer-events: none;
+    letter-spacing: 1px;
+  }}
   #overlay {{
     position: absolute;
     inset: 0;
@@ -225,6 +236,7 @@ game_html = f"""
     <span id="scoreLabel">Score: 0</span>
     <span id="bestLabel">Best: {st.session_state.scores['high_score']}</span>
   </div>
+  <div id="targetLabel">🎯 TARGET LOCKED</div>
   <div id="bossBarWrap" style="
     position:absolute; top:44px; left:50%; transform:translateX(-50%);
     width:60%; max-width:420px; display:none; z-index:4;">
@@ -259,7 +271,7 @@ game_html = f"""
       </label>
     </div>
     <button id="startBtn">▶ Start Run</button>
-    <p class="hint">SPACE = Jump &nbsp;•&nbsp; Hold ↑ / Top = Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer &nbsp;•&nbsp; F / 🔫 = Shoot</p>
+    <p class="hint">SPACE = Jump &nbsp;•&nbsp; Hold ↑ / Top = Fly &nbsp;•&nbsp; ↓ / Bottom = Slide &nbsp;•&nbsp; ← → / A D = Steer &nbsp;•&nbsp; F / 🔫 = Shoot &nbsp;•&nbsp; Click an obstacle = 🎯 Lock target</p>
   </div>
 </div>
 
@@ -283,6 +295,7 @@ const startBtn = document.getElementById('startBtn');
 const scoreLabel = document.getElementById('scoreLabel');
 const bestLabel = document.getElementById('bestLabel');
 const shootBtn = document.getElementById('shootBtn');
+const targetLabel = document.getElementById('targetLabel');
 const bossBarWrap = document.getElementById('bossBarWrap');
 const bossBarFill = document.getElementById('bossBarFill');
 const bossLabel = document.getElementById('bossLabel');
@@ -623,6 +636,61 @@ const BOSS_SCORE_INTERVAL = 2000;
 const BOSS_TYPES = ['spiker', 'sentinel', 'swarm'];
 let bossCycleIndex = 0;
 
+// ---------- target lock (click an obstacle to auto-hit it with every shot) ----------
+const raycaster = new THREE.Raycaster();
+const mouseVec = new THREE.Vector2();
+let lockedTarget = null;
+let targetRing = null;
+
+function makeTargetRing() {{
+  const ringGeo = new THREE.RingGeometry(1.0, 1.28, 28);
+  const ringMat = new THREE.MeshBasicMaterial({{
+    color: 0xffe600, side: THREE.DoubleSide, transparent: true, opacity: 0.9
+  }});
+  return new THREE.Mesh(ringGeo, ringMat);
+}}
+
+function setLockedTarget(target) {{
+  clearLockedTarget();
+  lockedTarget = target;
+  targetRing = makeTargetRing();
+  scene.add(targetRing);
+  targetLabel.style.display = 'block';
+}}
+
+function clearLockedTarget() {{
+  if (targetRing) {{ scene.remove(targetRing); targetRing = null; }}
+  lockedTarget = null;
+  targetLabel.style.display = 'none';
+}}
+
+function tryTargetClick(clientX, clientY) {{
+  if (!running) return false;
+  const rect = holder.getBoundingClientRect();
+  mouseVec.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  mouseVec.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouseVec, camera);
+
+  const meshToTarget = new Map();
+  const meshes = [];
+  for (const o of obstacles) {{
+    if (o.hp > 0) {{ meshes.push(o.mesh); meshToTarget.set(o.mesh, o); }}
+  }}
+  if (boss) {{ meshes.push(boss.mesh); meshToTarget.set(boss.mesh, boss); }}
+  if (meshes.length === 0) return false;
+
+  const intersects = raycaster.intersectObjects(meshes, true);
+  if (intersects.length === 0) return false;
+
+  let hit = intersects[0].object;
+  while (hit && !meshToTarget.has(hit) && hit.parent) {{ hit = hit.parent; }}
+  const target = meshToTarget.get(hit);
+  if (!target) return false;
+
+  setLockedTarget(target);
+  return true;
+}}
+
 function resetGame() {{
   selectedDifficulty = difficultySelect.value;
   selectedLevel = parseInt(levelSelect.value, 10) || 1;
@@ -656,6 +724,7 @@ function resetGame() {{
   bossBarWrap.style.display = 'none';
   nextBossScore = BOSS_SCORE_INTERVAL;
   bossCycleIndex = 0;
+  clearLockedTarget();
   shipGroup.position.set(0, groundY + 1.2, 0);
   shipGroup.rotation.set(0, Math.PI, 0);
   shipGroup.scale.set(1, 1, 1);
@@ -696,15 +765,18 @@ document.addEventListener('keyup', (e) => {{
   if (e.code === 'ArrowRight' || e.code === 'KeyD') rightEnd();
 }});
 holder.addEventListener('touchstart', (e) => {{
+  const touch = e.touches[0];
+  if (tryTargetClick(touch.clientX, touch.clientY)) return;
   const rect = holder.getBoundingClientRect();
-  const touchY = e.touches[0].clientY - rect.top;
-  const touchX = e.touches[0].clientX - rect.left;
+  const touchY = touch.clientY - rect.top;
+  const touchX = touch.clientX - rect.left;
   if (touchX < rect.width / 3) leftStart();
   else if (touchX > rect.width * 2 / 3) rightStart();
   else if (touchY < rect.height / 2) flyStart(); else slideStart();
 }});
 holder.addEventListener('touchend', () => {{ flyEnd(); slideEnd(); leftEnd(); rightEnd(); }});
 holder.addEventListener('mousedown', (e) => {{
+  if (tryTargetClick(e.clientX, e.clientY)) return;
   const rect = holder.getBoundingClientRect();
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
@@ -756,7 +828,20 @@ function spawnPlayerBolt() {{
   mesh.position.copy(shipGroup.position);
   mesh.position.z -= 1.4;
   scene.add(mesh);
-  playerBolts.push({{ mesh }});
+
+  let vx = 0, vy = 0, vz = -1;
+  let homing = false;
+  let target = null;
+  if (lockedTarget && lockedTarget.hp > 0) {{
+    const dx = lockedTarget.mesh.position.x - mesh.position.x;
+    const dy = lockedTarget.mesh.position.y - mesh.position.y;
+    const dz = lockedTarget.mesh.position.z - mesh.position.z;
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+    vx = dx / dist; vy = dy / dist; vz = dz / dist;
+    homing = true;
+    target = lockedTarget;
+  }}
+  playerBolts.push({{ mesh, vx, vy, vz, homing, target }});
 }}
 
 function spawnEnemyBolt(fromObstacle) {{
@@ -785,7 +870,10 @@ function spawnBoss() {{
   bossSpawned = true;
   bossActive = true;
   // clear the trench of normal obstacles for a clean arena
-  for (const o of obstacles) scene.remove(o.mesh);
+  for (const o of obstacles) {{
+    if (lockedTarget === o) clearLockedTarget();
+    scene.remove(o.mesh);
+  }}
   obstacles = [];
   const type = BOSS_TYPES[bossCycleIndex % BOSS_TYPES.length];
   bossCycleIndex++;
@@ -952,13 +1040,29 @@ function update(dt) {{
     }}
   }}
   obstacles = obstacles.filter(o => {{
-    if (o.hp <= 0 || o.z > 6) {{ scene.remove(o.mesh); return false; }}
+    if (o.hp <= 0 || o.z > 6) {{
+      if (lockedTarget === o) clearLockedTarget();
+      scene.remove(o.mesh);
+      return false;
+    }}
     return true;
   }});
 
-  // player bolts: move forward, check obstacle hits
+  // player bolts: move (homing toward locked target if set, else straight forward), check obstacle hits
+  const boltSpeed = 2.3;
   for (const b of playerBolts) {{
-    b.mesh.position.z -= 2.2 * dt;
+    if (b.homing && b.target && b.target.hp > 0) {{
+      const dx = b.target.mesh.position.x - b.mesh.position.x;
+      const dy = b.target.mesh.position.y - b.mesh.position.y;
+      const dz = b.target.mesh.position.z - b.mesh.position.z;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+      b.vx = dx / dist; b.vy = dy / dist; b.vz = dz / dist;
+      b.mesh.position.x += b.vx * boltSpeed * dt;
+      b.mesh.position.y += b.vy * boltSpeed * dt;
+      b.mesh.position.z += b.vz * boltSpeed * dt;
+    }} else {{
+      b.mesh.position.z -= boltSpeed * dt;
+    }}
   }}
   for (const b of playerBolts) {{
     for (const o of obstacles) {{
@@ -970,11 +1074,12 @@ function update(dt) {{
         o.hp = 0;
         b.hit = true;
         score += 40;
+        if (lockedTarget === o) clearLockedTarget();
       }}
     }}
   }}
   playerBolts = playerBolts.filter(b => {{
-    if (b.hit || b.mesh.position.z < -72) {{ scene.remove(b.mesh); return false; }}
+    if (b.hit || b.mesh.position.z < -72 || b.mesh.position.z > 8) {{ scene.remove(b.mesh); return false; }}
     return true;
   }});
 
@@ -1047,6 +1152,7 @@ function update(dt) {{
         bossBarFill.style.width = Math.max(0, (boss.hp / boss.maxHp) * 100) + '%';
         if (boss.hp <= 0) {{
           score += 1500;
+          if (lockedTarget === boss) clearLockedTarget();
           scene.remove(boss.mesh);
           boss = null;
           bossActive = false;
@@ -1065,6 +1171,19 @@ function update(dt) {{
       if (cdx < 3.4 && cdy < 3.4 && cdz < 3.4) {{
         endGame();
       }}
+    }}
+  }}
+
+  // keep the target-lock ring glued to its target, or clear it if the target is gone
+  if (lockedTarget) {{
+    const stillValid = lockedTarget.hp > 0 && (lockedTarget === boss || obstacles.includes(lockedTarget));
+    if (!stillValid) {{
+      clearLockedTarget();
+    }} else if (targetRing) {{
+      targetRing.position.copy(lockedTarget.mesh.position);
+      targetRing.lookAt(camera.position);
+      const ringScale = (lockedTarget.radius ? lockedTarget.radius * 1.15 : 3.2) * (1 + Math.sin(elapsed * 0.2) * 0.06);
+      targetRing.scale.set(ringScale, ringScale, ringScale);
     }}
   }}
 
@@ -1129,11 +1248,9 @@ requestAnimationFrame(loop);
 
 components.html(game_html, height=460, scrolling=False)
 
-components.html(game_html, height=460, scrolling=False)
-
 st.markdown("""
 <div style="text-align:center; margin-top: 14px; color: rgba(255,255,255,0.45); font-size: 13px;">
-Controls: <b>Space</b> to jump, <b>hold ↑</b> to fly, <b>hold ↓</b> to slide, <b>← → / A D</b> to steer — or hold left/right/top/bottom thirds of the canvas on mobile.
+Controls: <b>Space</b> to jump, <b>hold ↑</b> to fly, <b>hold ↓</b> to slide, <b>← → / A D</b> to steer, <b>click an obstacle</b> to lock your target — or hold left/right/top/bottom thirds of the canvas on mobile.
 </div>
 """, unsafe_allow_html=True)
 
